@@ -1,0 +1,375 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "xueqiu-income",
+      "semantics": "利润表 · 全部报告期（各期为年初至该期末的累计值），金额单位为人民币元",
+      "symbol": "SH601127",
+      "quoteName": "赛力斯",
+      "reportType": "all",
+      "currency": "CNY",
+      "orgType": 1,
+      "lastReportName": "2026一季报",
+      "periodCount": 2,
+      "pagesFetched": 1,
+      "crawledAt": "<volatile>"
+    },
+    "units": {
+      "amount": "元",
+      "eps": "元/股",
+      "yoy": "小数比率（0.3446 表示 +34.46%）"
+    },
+    "insights": [
+      "赛力斯（SH601127）共取到 2 个报告期，最新为 2026一季报",
+      "2026一季报：营业总收入 257.46 亿（同比增 34.46%）、归母净利润 7.54 亿（同比增 0.89%）",
+      "⚠️ 少数股东损益为 -1.44 亿（亏损），故归母净利润 7.54 亿 **高于**合并净利润 6.11 亿 —— 两者不可混用",
+      "2026一季报 毛利率约 26.24%（营业总收入口径）",
+      "扣非归母净利润 1.03 亿，占归母净利润 13.6%（非经常性损益占比较高，需关注利润构成）"
+    ],
+    "items": [
+      {
+        "reportDate": "2026-03-30T16:00:00.000Z",
+        "reportName": "2026一季报",
+        "dataUpdatedAt": "2026-04-29T11:45:47.000Z",
+        "totalRevenue": {
+          "value": 25745711786.75,
+          "yoy": 0.3446285931858831
+        },
+        "revenue": {
+          "value": 25745711786.75,
+          "yoy": 0.3446285931858831
+        },
+        "totalOperatingCosts": {
+          "value": 25864181222.45,
+          "yoy": 0.3917663047945134
+        },
+        "operatingCost": {
+          "value": 18990470700.37,
+          "yoy": 0.3702503035053049
+        },
+        "taxesAndSurcharge": {
+          "value": 528873300.52,
+          "yoy": 0.06567573345670744
+        },
+        "sellingExpenses": {
+          "value": 3718989331.35,
+          "yoy": 0.39692479609486314
+        },
+        "adminExpenses": {
+          "value": 736477052.83,
+          "yoy": 0.12015145253086039
+        },
+        "rdExpenses": {
+          "value": 1793557041.7,
+          "yoy": 0.7068308317078046
+        },
+        "financeExpenses": {
+          "value": 95813795.68,
+          "yoy": 1.6735346325719256
+        },
+        "interestExpense": {
+          "value": 36596098.22,
+          "yoy": -0.32906096811679586
+        },
+        "interestIncome": {
+          "value": 256327360.98,
+          "yoy": 0.19732234277619642
+        },
+        "otherIncome": {
+          "value": 909719742.83,
+          "yoy": 1.739058531032966
+        },
+        "investIncome": {
+          "value": 41865166.44,
+          "yoy": 3.2404858845588604
+        },
+        "investIncomeFromAssociates": {
+          "value": -16442442.65,
+          "yoy": 0.435974998211116
+        },
+        "fairValueChangeIncome": {
+          "value": 22342998.05,
+          "yoy": 15.789990698360874
+        },
+        "creditImpairmentLoss": {
+          "value": -3527617.58,
+          "yoy": 0.8981342147143605
+        },
+        "assetImpairmentLoss": {
+          "value": 52413715.72,
+          "yoy": -0.08179463624146419
+        },
+        "assetDisposalIncome": {
+          "value": -1014345.93,
+          "yoy": -1.3029714381659219
+        },
+        "exchangeGain": {
+          "value": null,
+          "yoy": null
+        },
+        "operatingProfit": {
+          "value": 805558027.55,
+          "yoy": -0.09242907575178125
+        },
+        "nonOperatingIncome": {
+          "value": 48390474.04,
+          "yoy": 1.325929387336667
+        },
+        "nonOperatingExpense": {
+          "value": 5089352.55,
+          "yoy": -0.6940040222366044
+        },
+        "nonCurrentAssetDisposalGain": {
+          "value": null,
+          "yoy": null
+        },
+        "nonCurrentAssetDisposalLoss": {
+          "value": null,
+          "yoy": null
+        },
+        "totalProfit": {
+          "value": 848859149.04,
+          "yoy": -0.048119361700924596
+        },
+        "incomeTaxExpense": {
+          "value": 238313832.11,
+          "yoy": 0.5767727029743609
+        },
+        "netProfit": {
+          "value": 610545316.93,
+          "yoy": -0.1756409396930466
+        },
+        "continuingOperationsNetProfit": {
+          "value": 610545316.93,
+          "yoy": -0.1756409396930466
+        },
+        "discontinuedOperationsNetProfit": {
+          "value": null,
+          "yoy": null
+        },
+        "netProfitAttrParent": {
+          "value": 754464672.82,
+          "yoy": 0.008921162241436175
+        },
+        "minorityInterestIncome": {
+          "value": -143919355.89,
+          "yoy": -19.091592985971158
+        },
+        "netProfitDeductNonRecurring": {
+          "value": 102900401.65,
+          "yoy": -0.7387352984853512
+        },
+        "basicEps": {
+          "value": 0.43,
+          "yoy": -0.14
+        },
+        "dilutedEps": {
+          "value": 0.43,
+          "yoy": -0.14
+        },
+        "otherComprehensiveIncome": {
+          "value": -818263.45,
+          "yoy": -1.0752135059407475
+        },
+        "otherComprehensiveIncomeAttrParent": {
+          "value": -42991.58,
+          "yoy": -1.004000678476733
+        },
+        "otherComprehensiveIncomeAttrMinority": {
+          "value": -775271.87,
+          "yoy": -6.823125368934628
+        },
+        "totalComprehensiveIncome": {
+          "value": 609727053.48,
+          "yoy": -0.1886635795080054
+        },
+        "totalComprehensiveIncomeAttrParent": {
+          "value": 754421681.24,
+          "yoy": -0.005428690944579629
+        },
+        "totalComprehensiveIncomeAttrMinority": {
+          "value": -144694627.76,
+          "yoy": -19.582373634338143
+        }
+      },
+      {
+        "reportDate": "2025-12-30T16:00:00.000Z",
+        "reportName": "2025年报",
+        "dataUpdatedAt": "2026-03-30T10:15:18.000Z",
+        "totalRevenue": {
+          "value": 165053636639.13,
+          "yoy": 0.13692234908079212
+        },
+        "revenue": {
+          "value": 165053636639.13,
+          "yoy": 0.13692234908079212
+        },
+        "totalOperatingCosts": {
+          "value": 157859698707.06,
+          "yoy": 0.13470219187894256
+        },
+        "operatingCost": {
+          "value": 116953831365.74,
+          "yoy": 0.09088854746604388
+        },
+        "taxesAndSurcharge": {
+          "value": 4390172691.9,
+          "yoy": 0.1291209465079376
+        },
+        "sellingExpenses": {
+          "value": 24194263481.94,
+          "yoy": 0.26115235901737105
+        },
+        "adminExpenses": {
+          "value": 4786889602.91,
+          "yoy": 0.3496164415959735
+        },
+        "rdExpenses": {
+          "value": 7954319736.55,
+          "yoy": 0.4241005107929228
+        },
+        "financeExpenses": {
+          "value": -419778171.98,
+          "yoy": -0.42539186134244117
+        },
+        "interestExpense": {
+          "value": 198656464.51,
+          "yoy": -0.1735808511874842
+        },
+        "interestIncome": {
+          "value": 808845597.29,
+          "yoy": 0.5340803321808484
+        },
+        "otherIncome": {
+          "value": 1558596588.81,
+          "yoy": 0.45978033654278694
+        },
+        "investIncome": {
+          "value": 294063375.28,
+          "yoy": 27.473881960043
+        },
+        "investIncomeFromAssociates": {
+          "value": 80179504.72,
+          "yoy": 2.083169728021354
+        },
+        "fairValueChangeIncome": {
+          "value": 17184275.64,
+          "yoy": -0.829024913712654
+        },
+        "creditImpairmentLoss": {
+          "value": -4532816.09,
+          "yoy": -1.0382713122683755
+        },
+        "assetImpairmentLoss": {
+          "value": 1579002308.08,
+          "yoy": -0.2747867271741032
+        },
+        "assetDisposalIncome": {
+          "value": 28623064.75,
+          "yoy": 7.163954758370361
+        },
+        "exchangeGain": {
+          "value": null,
+          "yoy": null
+        },
+        "operatingProfit": {
+          "value": 7517935744.56,
+          "yoy": 0.5211765882883106
+        },
+        "nonOperatingIncome": {
+          "value": 110456609.92,
+          "yoy": 1.402975722225038
+        },
+        "nonOperatingExpense": {
+          "value": 158863349.87,
+          "yoy": 3.316498979284859
+        },
+        "nonCurrentAssetDisposalGain": {
+          "value": null,
+          "yoy": null
+        },
+        "nonCurrentAssetDisposalLoss": {
+          "value": null,
+          "yoy": null
+        },
+        "totalProfit": {
+          "value": 7469529004.61,
+          "yoy": 0.5085850578823103
+        },
+        "incomeTaxExpense": {
+          "value": 1322789191.71,
+          "yoy": 5.262282298389623
+        },
+        "netProfit": {
+          "value": 6146739812.9,
+          "yoy": 0.2967486979398028
+        },
+        "continuingOperationsNetProfit": {
+          "value": 6146739812.9,
+          "yoy": 0.2967486979398028
+        },
+        "discontinuedOperationsNetProfit": {
+          "value": null,
+          "yoy": null
+        },
+        "netProfitAttrParent": {
+          "value": 5956787449.91,
+          "yoy": 0.0018234420985089655
+        },
+        "minorityInterestIncome": {
+          "value": 189952362.99,
+          "yoy": 1.1575284506217123
+        },
+        "netProfitDeductNonRecurring": {
+          "value": 5135925807.64,
+          "yoy": -0.07844831776600711
+        },
+        "basicEps": {
+          "value": 3.68,
+          "yoy": -0.06598984771573599
+        },
+        "dilutedEps": {
+          "value": 3.67,
+          "yoy": -0.0685279187817259
+        },
+        "otherComprehensiveIncome": {
+          "value": 125326777.99,
+          "yoy": 7.866417271723999
+        },
+        "otherComprehensiveIncomeAttrParent": {
+          "value": 118750484.01,
+          "yoy": 7.759650541247971
+        },
+        "otherComprehensiveIncomeAttrMinority": {
+          "value": 6576293.98,
+          "yoy": 10.368535702806433
+        },
+        "totalComprehensiveIncome": {
+          "value": 6272066590.89,
+          "yoy": 0.31925428922632476
+        },
+        "totalComprehensiveIncomeAttrParent": {
+          "value": 6075537933.92,
+          "yoy": 0.019470761317875847
+        },
+        "totalComprehensiveIncomeAttrMinority": {
+          "value": 196528656.97,
+          "yoy": 1.1630604282352996
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "xueqiu-income",
+    "skillName": "雪球利润表",
+    "params": {
+      "symbol": "SH601127",
+      "maxPages": 1,
+      "type": "all",
+      "count": 5
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

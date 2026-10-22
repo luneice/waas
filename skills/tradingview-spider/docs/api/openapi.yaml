@@ -1,0 +1,1560 @@
+openapi: 3.1.0
+info:
+  title: TradingView（cn.tradingview.com）行情检索 API
+  description: |
+    TradingView 平台的 REST 接口文档，覆盖标的检索、批量截面扫描、单标的轻量快照、用户态接口、
+    技术指标（Study）编译服务。
+    人读导航与完整背景说明见同目录 [`tradingview-API分析.md`](../tradingview-API分析.md)。
+
+    **⚠ 本文档不覆盖 WebSocket 协议**：TradingView 的实时报价（含基本面/技术面全字段）与历史 K 线、
+    以及技术指标数据本身（`create_study`/`du` 消息）完全由
+    `wss://data.tradingview.com/socket.io/websocket` 承载，自定义分帧协议非标准 REST/Socket.IO，
+    无法用 OpenAPI 建模。协议细节、消息格式、字段字典见分析文档 §4、§7。
+
+    **技术指标 REST 部分**（本文档 `pine-facade.tradingview.com` 相关 schema）只覆盖"发现指标 +
+    编译出可执行密文"这两步，指标数据本身仍需走 WS，见分析文档 §8.4。
+  version: 1.1.0
+
+servers:
+  - url: https://symbol-search.tradingview.com
+    description: 标的检索服务
+  - url: https://scanner.tradingview.com
+    description: 批量截面扫描 / 单标的轻量快照服务
+  - url: https://cn.tradingview.com
+    description: 主站（用户态接口，简体中文语言站点）
+  - url: https://pricealerts.tradingview.com
+    description: 价格提醒服务
+  - url: https://pine-facade.tradingview.com
+    description: 技术指标（Study/Indicator）发现与编译服务
+  - url: https://scanner-backend.tradingview.com
+    description: |
+      筛选器辅助枚举服务（本次仅确认 /enum/ordered 一个端点，用于债券收益率
+      指标 metrics/metrics_full_name 枚举，与 scanner.tradingview.com 域名下
+      同名端点是否共享同一套字段命名空间未经验证）
+
+
+components:
+  parameters:
+    LabelProductParam:
+      name: label-product
+      in: query
+      description: 前端埋点标签，标识调用来源模块；不影响业务逻辑，可省略
+      required: false
+      schema:
+        type: string
+        example: right-details
+
+  schemas:
+    # ── 标的检索 ──────────────────────────────────────────────────
+    SymbolSearchLogo:
+      type: object
+      properties:
+        style:
+          type: string
+          example: single
+        logoid:
+          type: string
+          description: 图标 ID，配合 s3-symbol-logo.tradingview.com/<logoid>.svg 取图标
+          example: coinbase
+
+    SymbolSearchSource2:
+      type: object
+      description: 交易所/数据源详情
+      properties:
+        id:
+          type: string
+          example: NASDAQ
+        name:
+          type: string
+          example: Nasdaq Stock Market
+        description:
+          type: string
+          example: Nasdaq Stock Market
+        country:
+          type: string
+          description: 仅顶层交易所对象携带
+          example: US
+
+    SymbolSearchItem:
+      type: object
+      description: 标的检索结果项
+      properties:
+        symbol:
+          type: string
+          description: 标的代码（不含交易所前缀）
+          example: AAPL
+        description:
+          type: string
+          description: 标的名称，随 lang 参数变化语言
+          example: Apple Inc.
+        type:
+          type: string
+          description: |
+            资产类别。实测枚举：stock / bond / fund / futures / forex / spot / commodity / index / dr / swap。
+            该字段决定下游 WS quote_session 返回哪一批字段（如债券无 iv/delta 等期权字段）。
+          example: stock
+        exchange:
+          type: string
+          description: 交易所代码，与 symbol 组合成全局唯一标识 EXCHANGE:SYMBOL
+          example: NASDAQ
+        found_by_isin:
+          type: boolean
+        found_by_cusip:
+          type: boolean
+        isin:
+          type: string
+          nullable: true
+          description: 国际证券识别码，仅部分标的有
+          example: US0378331005
+        cusip:
+          type: string
+          nullable: true
+          example: "037833100"
+        cik_code:
+          type: string
+          nullable: true
+          description: 美股 SEC CIK 编码
+        currency_code:
+          type: string
+          nullable: true
+          example: USD
+        country:
+          type: string
+          nullable: true
+          example: US
+        is_primary_listing:
+          type: boolean
+          description: 是否为该证券的主要挂牌交易所
+        typespecs:
+          type: array
+          description: |
+            细分标签数组。例：government/yield/benchmark 标记基准国债收益率；common 标记普通股。
+            与下游 scanner/WS 的 typespecs 过滤条件对应。
+          items:
+            type: string
+          example: ["government", "yield", "benchmark"]
+        provider_id:
+          type: string
+          description: 数据供应商标识
+          example: refinitiv
+        logoid:
+          type: string
+          nullable: true
+        logo:
+          $ref: '#/components/schemas/SymbolSearchLogo'
+        source_logoid:
+          type: string
+          nullable: true
+        source_id:
+          type: string
+          description: 交易所简称，通常等于 exchange
+          example: NASDAQ
+        source2:
+          $ref: '#/components/schemas/SymbolSearchSource2'
+        ipo_offer_time:
+          type: integer
+          nullable: true
+          description: IPO 发行时间，Unix 秒级时间戳
+        grouped_symbols:
+          type: array
+          description: |
+            同一公司在其他交易所的挂牌（enable_grouping=true 时出现）。
+            结构与顶层字段基本相同（去除 grouped_symbols 自身，避免无限嵌套）。
+          items:
+            type: object
+            description: 结构同 SymbolSearchItem，但不再嵌套 grouped_symbols
+
+    SymbolSearchResponse:
+      type: object
+      properties:
+        symbols_remaining:
+          type: integer
+          description: 尚未返回的剩余匹配数（非总数），可用于判断是否需要继续翻页
+          example: 9936
+        symbols:
+          type: array
+          items:
+            $ref: '#/components/schemas/SymbolSearchItem'
+
+    # ── 批量截面扫描 ──────────────────────────────────────────────
+    ScanFilterItem:
+      type: object
+      description: |
+        单个过滤条件。left 是上游定义的枚举（scanner 的 columns 命名空间），
+        不做白名单拦截，只做形状校验。
+      required: [left, operation]
+      properties:
+        left:
+          type: string
+          description: |
+            字段名（columns 命名空间，未穷举，见分析文档 §3.2 末尾说明）。
+            支持逗号拼接的复合字段引用（如 "dividend_ex_date_recent,dividend_ex_date_upcoming"），
+            语义为"任一字段落在 right 区间内即命中"，采集实现遇到时不要当非法字段名报错。
+          example: maturity_date
+        operation:
+          type: string
+          description: |
+            实测枚举（2026-07-29 补充抓包新增 greater / has_none_of 两项）：
+            equal（相等）/ in_range（区间，right 为二元数组；也用于枚举字段的
+            "属于以下取值之一"，如 sector in_range ["Health Services"]）/
+            nempty（非空）/ has（数组包含）/ has_none_of（数组不包含任一值，
+            has 的反义，如排除 ETF/公募基金）/ match（正则匹配，right 为正则字符串）/
+            greater（大于，right 为单个数值）。
+            未见 less/greater_or_equal 等对称写法但符合命名惯例，未验证不代表不存在。
+          example: equal
+        right:
+          description: 比较值，类型随 operation 变化（标量/二元数组/数组/正则字符串）
+          example: US
+
+    ScanFilter2Expression:
+      type: object
+      description: |
+        跨字段复合逻辑，operator=and/or 交替嵌套。完整的"按类型过滤标的"参考写法
+        （官方筛选器页面恒定携带，用于把标的限定为 stock/dr/fund 等类型并排除
+        pre-ipo/ETF/公募基金）见分析文档 §3.2，可直接照抄复用。
+      properties:
+        operator:
+          type: string
+          example: or
+        operands:
+          type: array
+          items:
+            type: object
+            properties:
+              expression:
+                $ref: '#/components/schemas/ScanFilterItem'
+              operation:
+                $ref: '#/components/schemas/ScanFilter2Expression'
+                description: 与 expression 二选一，用于更深层嵌套（and 套 or 套 and...）
+
+    ScanRequest:
+      type: object
+      description: |
+        请求体名义 Content-Type 为 application/json，但抓包实测 HTTP 头是
+        `text/plain;charset=UTF-8`，采集实现不要按 JSON Content-Type 做强校验。
+      required: [columns]
+      properties:
+        columns:
+          type: array
+          description: |
+            要返回哪些字段，响应 data[].d 按此顺序返回位置数组（非键值对象）。
+            字段字典体量巨大且未穷举，勿把 WS quote_session 的字段名直接套用（命名空间不完全一致）。
+          items:
+            type: string
+          example: ["logo", "name", "description", "close", "market_cap_basic"]
+        filter:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScanFilterItem'
+        filter2:
+          $ref: '#/components/schemas/ScanFilter2Expression'
+        sort:
+          type: object
+          properties:
+            sortBy:
+              type: string
+              example: maturity_date
+            sortOrder:
+              type: string
+              enum: [asc, desc]
+        range:
+          type: array
+          description: 分页起止下标 [start, end]
+          items:
+            type: integer
+          example: [0, 10]
+        markets:
+          type: array
+          description: |
+            可选，覆盖 URL 路径的 market 限定。上游定义的枚举，不做白名单拦截。
+            本次从日历类请求确认的 36 个国家/地区代码样本：america / argentina /
+            australia / belgium / brazil / canada / china / cyprus / germany /
+            denmark / estonia / spain / finland / france / greece / hungary /
+            indonesia / india / italy / japan / korea / lithuania / latvia /
+            luxembourg / mexico / netherlands / poland / portugal / russia /
+            romania / ksa / sweden / slovakia / turkey / uk / rsa。
+            未列出的国家代码仍应透传给上游由其判定，不要收窄成拦截白名单。
+          items:
+            type: string
+          example: ["bonds"]
+        preset:
+          type: string
+          description: |
+            服务端预置查询模板，免手写完整 filter，非必须项——同一类日历场景
+            也可以不传 preset 而自己拼完整 filter（如分红日历实测未使用 preset，
+            纯手写 filter 配合逗号拼接复合字段 left）。实测枚举：
+            ipo_calendar（IPO日历，自动补充隐藏条件）、
+            stocks_related_bonds（个股关联债券，需配合 index_filters）、
+            earning（财报日历）。
+          example: ipo_calendar
+        symbols:
+          type: object
+          description: 可选，直接指定标的列表而非条件过滤
+          properties:
+            tickers:
+              type: array
+              items:
+                type: string
+              example: ["NASDAQ:AAPL"]
+            query:
+              type: object
+              description: 按类型等条件构造的隐式标的集合
+              properties:
+                types:
+                  type: array
+                  items:
+                    type: string
+                  example: ["bond"]
+            black_list_symbols:
+              type: boolean
+        index_filters:
+          type: array
+          description: 按索引维度过滤（如"某股票关联的债券"）
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: bond_issuer_cr_parent_stock_symbol
+              values:
+                type: array
+                items:
+                  type: string
+                example: ["NASDAQ:AAPL"]
+        options:
+          type: object
+          properties:
+            lang:
+              type: string
+              example: zh
+        ignore_unknown_fields:
+          type: boolean
+          description: false 时传入不存在的字段名会导致请求报错或字段被静默丢弃
+
+    ScanRow:
+      type: object
+      properties:
+        s:
+          type: string
+          description: 标的全局标识 EXCHANGE:SYMBOL
+          example: "TVC:US01MY"
+        d:
+          type: array
+          description: |
+            与请求 columns 数组严格按下标对应的位置数组，不是键值对象。
+            采集时必须记住请求侧 columns 顺序才能正确解包。
+          items: {}
+          example: [20260825, 3.772004, 0, ["government", "yield", "benchmark"]]
+
+    ScanResponse:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+          example: 26
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScanRow'
+        params:
+          type: object
+          description: 服务端最终生效的查询条件回显（含预置模板展开后的完整 filter）
+
+    SymbolSnapshotResponse:
+      type: object
+      description: |
+        单标的轻量快照，键值对象（区别于 scan 的位置数组）。
+        字段名沿用 TradingView 技术指标命名惯例；无值字段返回 null，
+        代表"该类型标的不适用此字段"（如债券没有 iv），非数据缺失。
+      additionalProperties:
+        nullable: true
+      example:
+        High.1M: 4.714
+        Low.1M: 4.361
+        Perf.1M: 4.137931034482757
+        Perf.3M: 8.10623556581986
+        Recommend.All: null
+        iv: null
+
+    # ── 用户态：自选股列表 ───────────────────────────────────────
+    SymbolsListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        type:
+          type: string
+          enum: [custom, colored]
+        name:
+          type: string
+        symbols:
+          type: array
+          items:
+            type: string
+          description: |
+            EXCHANGE:SYMBOL 列表；`###<分组名>` 形式的元素是自选股内的分组分隔符（前端渲染用），非真实标的
+        active:
+          type: boolean
+        shared:
+          type: boolean
+        color:
+          type: string
+          nullable: true
+          description: colored 类型专属，标记分组颜色（red/orange/green 等）
+        description:
+          type: string
+          nullable: true
+        created:
+          type: string
+          format: date-time
+          nullable: true
+        modified:
+          type: string
+          format: date-time
+          nullable: true
+
+    OffersResponse:
+      type: object
+      properties:
+        trial:
+          type: object
+          properties:
+            available_for_anons:
+              type: boolean
+            can_be_skipped:
+              type: boolean
+            is_available:
+              type: boolean
+            length:
+              type: integer
+              description: 试用天数
+              example: 30
+            expert_trial_length:
+              type: integer
+              example: 14
+
+    CheckLanguageResponse:
+      type: object
+      properties:
+        country_code:
+          type: string
+          example: us
+        locale:
+          type: string
+          example: en
+        is_in_european_union:
+          type: boolean
+
+    PriceAlertsBaseResponse:
+      type: object
+      description: pricealerts.tradingview.com 系列接口的统一信封
+      properties:
+        s:
+          type: string
+          example: ok
+        id:
+          type: string
+          description: 请求追踪 ID，格式如 <随机前缀>-<数字>
+          example: "5oqv-2415139"
+        r:
+          type: array
+          description: 业务明细数组，本次抓包样本均为空（账号无提醒配置）
+          items: {}
+
+    # ── 技术指标（Study/Indicator）编译服务 ─────────────────────
+    PineListItem:
+      type: object
+      description: |
+        pine-facade/list 返回的指标目录条目。四个 filter（standard/candlestick/fundamental/saved）
+        返回结构完全一致，区别只在覆盖的指标类别。
+      properties:
+        userId:
+          type: integer
+          description: 脚本作者的用户 ID（内建指标固定为 TradingView 官方账号）
+          example: 605017
+        scriptName:
+          type: string
+          description: 指标显示名称
+          example: Aroon Oscillator
+        scriptSource:
+          type: string
+          description: 抓包样本恒为空字符串，源码不通过此端点下发
+        scriptAccess:
+          type: string
+          description: |
+            免费/付费标识，实测仅两种取值：open_no_auth（免费/公开，可正常 translate）、
+            closed_no_auth（需要付费/特定权限，translate 端点实际行为未经验证，
+            见分析文档 §8.5，勿假设会返回错误或空值）。
+          enum: [open_no_auth, closed_no_auth]
+          example: open_no_auth
+        scriptIdPart:
+          type: string
+          description: |
+            指标唯一标识，格式 "<命名空间>;<指标名>"（空格用 %1 转义，% 用 %25 转义）。
+            用户自建脚本命名空间为 PUB，官方内建为 STD。作为 translate/versions/is_auth_to_get
+            三个端点的路径参数。
+          example: "STD;Aroon_Oscillator"
+        version:
+          type: string
+          description: 版本号，与 scriptIdPart 组合定位具体版本
+          example: "1.0"
+        extra:
+          type: object
+          description: 元信息，字段随指标类别变化（基本面类携带 fund_id/financialPeriod 等）
+          properties:
+            isBuiltIn:
+              type: boolean
+            kind:
+              type: string
+              example: study
+            shortDescription:
+              type: string
+              example: Aroon Osc
+            sourceInputsCount:
+              type: integer
+              description: 该指标依赖的"数据源"类输入个数（如 close/open）
+            stats:
+              type: object
+              properties:
+                plot:
+                  type: integer
+                  description: 输出通道（plot）数量
+            tags:
+              type: array
+              items:
+                type: string
+            fund_id:
+              type: string
+              description: 仅 fundamental filter 携带，财务科目内部标识
+              example: total_revenue_fq
+            financialPeriod:
+              type: string
+              description: 仅 fundamental filter 携带，报告期口径
+              example: FQ
+            fundamentalCategory:
+              type: string
+              description: 仅 fundamental filter 携带，财务分类
+              example: Income statements
+        lastVersionMaj:
+          type: string
+          description: 抓包样本恒为 "0.0"，含义未明确
+
+    PineVersionEntry:
+      type: object
+      properties:
+        created:
+          type: string
+          format: date-time
+        version:
+          type: string
+          example: "1.0"
+
+    PineInputDef:
+      type: object
+      description: |
+        translate 响应 metaInfo.inputs 数组的单项。前 4 项为固定隐藏字段
+        （text/pineId/pineVersion/pineFeatures），此后每一项对应一个用户可调参数，
+        按数组顺序依次编号为 in_0/in_1/...（编号靠位置而非 id 字符串）。
+        构造 WS create_study 的 inputs 时需要逐项映射，见分析文档 §8.4。
+      properties:
+        id:
+          type: string
+          description: |
+            固定字段用固定 id（text/pineId/pineVersion/pineFeatures）；
+            可调参数在 translate 响应里 id 也是 in_N 形式，直接可用。
+          example: in_0
+        name:
+          type: string
+          description: 参数在 UI 上的显示名
+          example: Length
+        type:
+          type: string
+          description: |
+            决定 WS create_study 消息里对应 in_N.t 字段的取值。实测枚举：
+            integer / float / text / bool / source（K线数据源，如 close）/
+            resolution（时间框架，空字符串=跟随图表周期）。
+          enum: [integer, float, text, bool, source, resolution]
+          example: integer
+        defval:
+          description: 默认值，类型随 type 变化（text 类型的 "text" id 项此字段是编译后的密文本体）
+        isFake:
+          type: boolean
+          nullable: true
+          description: true 表示该参数是框架统一注入的控制位（非指标自身声明），如 __fast_calc/__profile
+        isHidden:
+          type: boolean
+          description: true 表示该项不在 UI 参数面板展示（text/pineId/pineVersion/pineFeatures 均为 true）
+
+    PinePlotDef:
+      type: object
+      description: |
+        translate 响应 metaInfo.plots 数组单项，声明一个输出通道。WS du 消息里 v 数组
+        （去掉首位时间戳后）与此数组按下标严格对应，见分析文档 §8.4。
+      properties:
+        id:
+          type: string
+          example: plot_0
+        type:
+          type: string
+          description: |
+            line=普通数值线；colorer=为另一 plot/fill 染色，取值需查 metaInfo.palettes
+            对应调色板的 valToIndex 表；shapes=图形标记（背离箭头等）；
+            alertcondition=仅用于提醒规则，不参与绘图/取数。
+          enum: [line, colorer, shapes, alertcondition]
+          example: line
+        target:
+          type: string
+          description: colorer 类型专属，指向被染色的 plot/fill id
+          example: plot_0
+        palette:
+          type: string
+          description: colorer 类型专属，指向 metaInfo.palettes 的 key
+          example: palette_0
+
+    PineMetaInfo:
+      type: object
+      description: translate 响应 result.metaInfo，描述该指标的完整可执行契约
+      properties:
+        id:
+          type: string
+          example: "Script$STD;Aroon_Oscillator@tv-scripting-101"
+        description:
+          type: string
+          description: 指标完整名称
+          example: Aroon Oscillator
+        shortDescription:
+          type: string
+          description: 图表上显示的简称
+          example: Aroon Osc
+        is_price_study:
+          type: boolean
+          description: true=叠加在主图价格轴上；false=独立副图展示
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PineInputDef'
+        plots:
+          type: array
+          items:
+            $ref: '#/components/schemas/PinePlotDef'
+        styles:
+          type: object
+          description: plot 的默认展示样式（标题、直方图基线等），采集时可忽略
+        palettes:
+          type: object
+          description: |
+            colorer 类型 plot 的调色板定义，每个 key 对应一个 palette_N，
+            内含 colors（下标→颜色名）与 valToIndex（原始值→颜色下标的映射表）
+        defaults:
+          type: object
+          description: inputs/styles/palettes 的默认值快照
+        isTVScript:
+          type: boolean
+        historyCalculationMayChange:
+          type: boolean
+          description: true 表示随着历史数据增补，早期已计算的值可能被重新修正（常见于依赖未来函数/repaint 的指标）
+        usedLibs:
+          type: array
+          description: 该脚本依赖的公共库（id + 版本），采集时无需单独处理，已内联进 ilTemplate
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              v:
+                type: string
+
+    PineTranslateResponse:
+      type: object
+      description: |
+        pine-facade/translate 的响应信封。success=false 或 result=null 的具体触发条件
+        （付费指标/未登录/版本不存在）未经验证，见分析文档 §8.5，勿假设。
+      properties:
+        success:
+          type: boolean
+        result:
+          type: object
+          nullable: true
+          properties:
+            IL:
+              type: string
+              description: |
+                与 ilTemplate 前若干字节相同、此后完全发散的另一段编码内容，
+                用途未探明。采集时不需要这个字段，只需要 ilTemplate。
+            ilTemplate:
+              type: string
+              description: |
+                ★核心产出：与 metaInfo.inputs 中 id="text" 项的 defval 完全一致，
+                也与随后 WS create_study 消息里 inputs.text 完全一致（已逐字节验证）。
+                原样透传给 WS 即可，无需解析内容。
+            metaInfo:
+              $ref: '#/components/schemas/PineMetaInfo'
+
+    PineIsAuthToGetResponse:
+      type: boolean
+      description: |
+        实测本次抓包 8 个免费指标样本均返回 true。确切语义未验证——
+        可能是按账号权限位判断，也可能是恒定为 true 的占位检查，
+        需要付费指标 + 免费账号交叉验证才能确认，见分析文档 §8.5。
+
+    # ── 社区指标/策略脚本库（发现阶段已验证，translate/create_study 全链路未验证）──
+    PubscriptItem:
+      type: object
+      description: |
+        pubscripts-library 系列端点返回的社区脚本条目。字段与 pine-facade 的
+        PineListItem 大体对应但不完全相同，scriptIdPart 前缀是 PUB;（32位十六进制哈希），
+        区别于官方指标的 STD; 前缀。该脚本能否走通 translate+create_study
+        全链路本次未验证，见分析文档 §8.2/§8.5。
+      properties:
+        imageUrl:
+          type: string
+          description: 脚本预览图 ID
+        scriptName:
+          type: string
+          example: "Smart Money Concepts (SMC) [LuxAlgo]"
+        title:
+          type: string
+        shortTitle:
+          type: string
+        scriptSource:
+          type: string
+          description: 抓包样本恒为空字符串，源码不在此端点下发
+        type:
+          type: integer
+          description: 1=study（指标），2=strategy（策略），与请求参数 type 同义
+          enum: [1, 2]
+        access:
+          type: integer
+          description: |
+            实测枚举 1/2/3，确切语义未验证——不要臆造为"免费/付费"三档。
+            见分析文档 §8.2 的未验证声明。
+          enum: [1, 2, 3]
+        scriptIdPart:
+          type: string
+          description: PUB; 前缀 + 32位十六进制哈希，后续能否直接喂给 pine-facade/translate 未经验证
+          example: "PUB;6daafb2cabe6419d98ae25229d2327f8"
+        version:
+          type: string
+        extra:
+          type: object
+          properties:
+            is_price_study:
+              type: boolean
+            kind:
+              type: string
+              example: study
+            originalScriptId:
+              type: string
+              description: 原始作者态脚本 ID（USER; 前缀），采集时无需处理
+            sourceInputsCount:
+              type: integer
+            stats:
+              type: object
+              additionalProperties:
+                type: integer
+        agreeCount:
+          type: integer
+          description: 点赞/认同数，sort=top 的排序依据
+          example: 154644
+        isRecommended:
+          type: boolean
+        editorsPick:
+          type: boolean
+          description: 仅 editors-picks 端点的样本携带此字段
+        author:
+          type: object
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            is_broker:
+              type: boolean
+
+    PubscriptLibraryResponse:
+      type: object
+      properties:
+        next:
+          type: string
+          nullable: true
+          description: |
+            下一页完整相对 URL（如 "/pubscripts-library/?count=20&offset=20"），
+            直接拼接域名即可请求，无需自行计算 offset。无 total 计数字段，
+            翻页终止条件是 results 为空或 next 缺失。
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PubscriptItem'
+
+    PubscriptPersonalAccessResponse:
+      type: object
+      description: 本次抓包样本为空（账号未购买任何付费社区脚本）
+      properties:
+        default:
+          type: array
+          items: {}
+        paid_package:
+          type: array
+          items: {}
+
+paths:
+  # ═══════════════════════════════════════════════════════════════
+  #  标的检索
+  # ═══════════════════════════════════════════════════════════════
+  /symbol_search/v3/:
+    get:
+      operationId: symbolSearch
+      summary: 按关键词/条件检索标的
+      description: |
+        text 为空时可配合 start 分页"浏览"标的库全量（步长 50，symbols_remaining 递减到 0 即拉完）。
+      tags: [标的检索]
+      parameters:
+        - name: text
+          in: query
+          required: false
+          description: 检索关键词，可为空
+          schema:
+            type: string
+          example: US10Y
+        - name: hl
+          in: query
+          required: false
+          description: 是否高亮匹配片段
+          schema:
+            type: integer
+          example: 1
+        - name: exchange
+          in: query
+          required: false
+          description: 限定交易所，空=不限
+          schema:
+            type: string
+        - name: lang
+          in: query
+          required: false
+          schema:
+            type: string
+          example: zh
+        - name: search_type
+          in: query
+          required: false
+          description: 限定标的类型；undefined=不限，或传具体类型如 bond
+          schema:
+            type: string
+          example: bond
+        - name: domain
+          in: query
+          required: false
+          schema:
+            type: string
+          example: production
+        - name: enable_grouping
+          in: query
+          required: false
+          description: 是否把同一公司多交易所挂牌合并进 grouped_symbols
+          schema:
+            type: boolean
+          example: true
+        - name: sort_by_country
+          in: query
+          required: false
+          description: 优先排序的国家代码
+          schema:
+            type: string
+          example: CN
+        - name: promo
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: start
+          in: query
+          required: false
+          description: 分页偏移，text 为空时用于翻页
+          schema:
+            type: integer
+          example: 50
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SymbolSearchResponse'
+
+  # ═══════════════════════════════════════════════════════════════
+  #  批量截面扫描
+  # ═══════════════════════════════════════════════════════════════
+  /global/scan:
+    post:
+      operationId: scanGlobal
+      summary: 全市场不分国别的批量截面扫描
+      description: |
+        未见"无过滤全市场"调用样本——所有抓包样本均带 filter/markets/preset。
+        若需扫描全市场，需自行构造更宽的 filter。
+      tags: [批量截面扫描]
+      parameters:
+        - $ref: '#/components/parameters/LabelProductParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+
+  /china/scan:
+    post:
+      operationId: scanChina
+      summary: 仅 A 股市场的批量截面扫描
+      tags: [批量截面扫描]
+      parameters:
+        - $ref: '#/components/parameters/LabelProductParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+
+  /bonds/scan:
+    post:
+      operationId: scanBonds
+      summary: 债券收益率曲线族批量截面扫描
+      description: 用于收益率曲线全景、跨国同期限收益率对比等场景
+      tags: [批量截面扫描]
+      parameters:
+        - $ref: '#/components/parameters/LabelProductParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+
+  /bond/scan:
+    post:
+      operationId: scanBondSingle
+      summary: 个股关联债券查询（单数路径，与 /bonds/scan 用途不同）
+      description: |
+        典型用法：配合 preset=stocks_related_bonds + index_filters
+        （name=bond_issuer_cr_parent_stock_symbol）查某公司发行的债券。
+      tags: [批量截面扫描]
+      parameters:
+        - $ref: '#/components/parameters/LabelProductParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+
+  /{market}/metainfo:
+    get:
+      operationId: scanMarketMetainfo
+      summary: 某市场筛选器的字段元信息
+      description: |
+        官方"股票筛选器"页面初始化时调用，推测用于给出该市场可用的筛选字段范围。
+        ⚠ 本次抓包该端点被调用 2 次（响应体大小分别为 148/3835 字节），
+        但响应体因抓包工具捕获缺失全部丢失（HAR 里 response.content 只有
+        mimeType/size 两个 key，无 text 字段），响应结构未知，不应臆造。
+      tags: [批量截面扫描]
+      parameters:
+        - name: market
+          in: path
+          required: true
+          description: 市场代码，与 scan 端点的 market 路径段同义
+          schema:
+            type: string
+          example: china
+        - $ref: '#/components/parameters/LabelProductParam'
+      responses:
+        '200':
+          description: 成功（响应结构未知，见 description）
+          content:
+            application/json:
+              schema: {}
+
+  /enum/ordered:
+    get:
+      operationId: scanEnumOrdered
+      summary: 批量取多个枚举字段的可选值字典
+      description: |
+        官方"股票筛选器"页面用于给字段选择器渲染下拉选项（如 sector/industry/
+        analyst_rating 等枚举字段的可选值 + 中英对照文案）。
+        ⚠ 本次抓包响应体 3796397 字节（约 3.8MB，说明枚举值字典体量巨大），
+        但响应体因抓包工具捕获缺失丢失，完整字段字典仍待专项重新抓包。
+        另有 scanner-backend.tradingview.com 域名下同名端点用于债券收益率指标
+        （metrics/metrics_full_name，本次唯一成功抓到内容的样本，5 个指标：
+        ytm/ytc/ytp/ytw/price），server 需切换为 scanner-backend.tradingview.com。
+      tags: [批量截面扫描]
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: 逗号分隔的字段名列表
+          schema:
+            type: string
+          example: "index,country,exchange,industry,sector,analyst_rating"
+        - name: lang
+          in: query
+          required: false
+          schema:
+            type: string
+          example: zh
+        - $ref: '#/components/parameters/LabelProductParam'
+      responses:
+        '200':
+          description: 成功（大部分样本响应结构未知，见 description）
+          content:
+            application/json:
+              schema: {}
+
+  /symbol:
+    get:
+      operationId: getSymbolSnapshot
+      summary: 单标的轻量字段快照
+      description: 用于详情页"表现"面板等轻量场景，一次性返回指定 fields
+      tags: [批量截面扫描]
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: 标的全局标识 EXCHANGE:SYMBOL
+          schema:
+            type: string
+          example: "NASDAQ:AAPL"
+        - name: fields
+          in: query
+          required: true
+          description: 逗号分隔字段名列表
+          schema:
+            type: string
+          example: "price_52_week_high,price_52_week_low,sector,country"
+        - name: no_404
+          in: query
+          required: false
+          description: 固定传 true，避免标的不存在时返回 404
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/LabelProductParam'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SymbolSnapshotResponse'
+
+  # ═══════════════════════════════════════════════════════════════
+  #  用户态：自选股列表（需登录会话）
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/symbols_list/active/:
+    get:
+      operationId: getActiveSymbolsList
+      summary: 当前激活的自选股列表
+      description: 需登录会话（浏览器 Cookie）
+      tags: [用户态]
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+            example: web
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SymbolsListItem'
+
+  /api/v1/symbols_list/custom/:
+    get:
+      operationId: getCustomSymbolsLists
+      summary: 全部自定义自选股列表（含未激活的）
+      tags: [用户态]
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+            example: web
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SymbolsListItem'
+
+  /api/v1/symbols_list/custom/{id}:
+    get:
+      operationId: getCustomSymbolsListById
+      summary: 按 ID 取单个自选股列表
+      tags: [用户态]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 209364636
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+            example: web
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SymbolsListItem'
+
+  /api/v1/symbols_list/colored/:
+    get:
+      operationId: getColoredSymbolsLists
+      summary: 按颜色分组的自选股（红/橙/绿等预置分组）
+      tags: [用户态]
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+            example: web
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SymbolsListItem'
+
+  /api/v1/offers/:
+    get:
+      operationId: getOffers
+      summary: 当前账号的付费试用/优惠状态
+      tags: [用户态]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OffersResponse'
+
+  /check_language/:
+    post:
+      operationId: checkLanguage
+      summary: 按 IP 判定的地区/语言偏好
+      tags: [用户态]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckLanguageResponse'
+
+  /chats/get/:
+    get:
+      operationId: getChats
+      summary: 私信/社区聊天列表
+      tags: [用户态]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 30
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {}
+
+  /textnotes/getall/:
+    get:
+      operationId: getTextNotes
+      summary: 图表文字笔记列表
+      tags: [用户态]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {}
+
+  # ═══════════════════════════════════════════════════════════════
+  #  用户态：价格提醒（pricealerts.tradingview.com）
+  # ═══════════════════════════════════════════════════════════════
+  /list_alerts:
+    get:
+      operationId: listAlerts
+      summary: 已设置的价格提醒列表
+      description: servers 需切换为 https://pricealerts.tradingview.com
+      tags: [价格提醒]
+      parameters:
+        - name: log_username
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: maintenance_unset_reason
+          in: query
+          required: false
+          schema:
+            type: string
+            example: initial_operated
+        - name: build_time
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceAlertsBaseResponse'
+
+  /get_offline_fires:
+    post:
+      operationId: getOfflineFires
+      summary: 离线期间触发过的提醒
+      description: servers 需切换为 https://pricealerts.tradingview.com
+      tags: [价格提醒]
+      parameters:
+        - name: log_username
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: maintenance_unset_reason
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: build_time
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceAlertsBaseResponse'
+
+  /get_offline_fire_controls:
+    post:
+      operationId: getOfflineFireControls
+      summary: 离线提醒的控制状态
+      description: servers 需切换为 https://pricealerts.tradingview.com
+      tags: [价格提醒]
+      parameters:
+        - name: log_username
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: maintenance_unset_reason
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: build_time
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceAlertsBaseResponse'
+
+  # ═══════════════════════════════════════════════════════════════
+  #  技术指标（Study/Indicator）：pine-facade.tradingview.com
+  #  完整两段式实现（REST 编译 + WS 挂载）见分析文档 §7
+  # ═══════════════════════════════════════════════════════════════
+  /pine-facade/list:
+    get:
+      operationId: pineList
+      summary: 枚举某一类技术指标/研究脚本目录
+      description: |
+        无需登录态即可访问（抓包实测无 Cookie 依赖）。四个 filter 各自独立：
+        standard（常规技术指标库，实测 145 条，142 条免费）、
+        candlestick（K 线形态识别，实测 45 条，全部免费）、
+        fundamental（基本面科目当作 study 暴露，实测 1442 条，全部付费）、
+        saved（当前登录账号自建的脚本，本次样本为空数组）。
+        条目里的 scriptIdPart + version 是后续 versions/is_auth_to_get/translate
+        三个端点的路径参数来源，不要自行拼造。
+      tags: [技术指标]
+      parameters:
+        - name: filter
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [standard, candlestick, fundamental, saved]
+          example: standard
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PineListItem'
+
+  /pine-facade/versions/{scriptIdPart}/{version}:
+    get:
+      operationId: pineVersions
+      summary: 查询某指标的可用版本列表
+      description: |
+        version 路径段传字面量 "last" 表示最新版本。通常无需单独调用——
+        list 返回的条目已带 version 字段，直接使用即可。
+      tags: [技术指标]
+      parameters:
+        - name: scriptIdPart
+          in: path
+          required: true
+          description: |
+            指标唯一标识，需 URL 编码（空格→%1，%→%25，分号 ; 需编码为 %3B）。
+            取自 pine-facade/list 响应的 scriptIdPart 字段，禁止自行拼造。
+          schema:
+            type: string
+          example: "STD%3BAroon_Oscillator"
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          example: last
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PineVersionEntry'
+
+  /pine-facade/is_auth_to_get/{scriptIdPart}/{version}:
+    get:
+      operationId: pineIsAuthToGet
+      summary: 查询当前会话是否有权限获取该指标
+      description: |
+        本次抓包 8 个免费指标样本均返回 true。确切语义（是否真按权限位判断，
+        还是恒定返回 true 的占位检查）未经验证，见分析文档 §8.5，
+        不要假设付费指标会在这里返回 false 而拦截 translate 调用。
+      tags: [技术指标]
+      parameters:
+        - name: scriptIdPart
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "STD%3BAroon_Oscillator"
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "1.0"
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PineIsAuthToGetResponse'
+
+  /pine-facade/translate/{scriptIdPart}/{version}:
+    get:
+      operationId: pineTranslate
+      summary: 编译指标脚本，产出可直接喂给 WS create_study 的密文
+      description: |
+        ★ 技术指标链路的核心端点。免费指标（scriptAccess=open_no_auth）实测全部
+        正常返回 result.metaInfo + result.ilTemplate；`result.ilTemplate` 需要
+        原样透传给 WS `create_study` 消息的 `inputs.text` 字段（已逐字节验证一致）。
+
+        **付费指标（scriptAccess=closed_no_auth）的真实响应未经验证**：本次抓包
+        唯一一条样本因抓包工具捕获缺失导致 response.text 呈现为 null（但
+        response.content.size=21608 说明服务端确实返回了实质内容），不能据此
+        判定"付费指标会编译失败"，需要用付费账号重新抓包确认，见分析文档 §8.5。
+      tags: [技术指标]
+      parameters:
+        - name: scriptIdPart
+          in: path
+          required: true
+          description: URL 编码后的指标标识，取自 pine-facade/list 的 scriptIdPart 字段
+          schema:
+            type: string
+          example: "STD%3BAroon_Oscillator"
+        - name: version
+          in: path
+          required: true
+          description: 版本号，取自 list 条目的 version 字段（也可传字面量 last）
+          schema:
+            type: string
+          example: "1.0"
+      responses:
+        '200':
+          description: |
+            HTTP 200（免费指标已验证正常返回内容；付费指标下是否仍为 200
+            但 success=false/result=null，或是否走 4xx，未经验证）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PineTranslateResponse'
+
+  # ═══════════════════════════════════════════════════════════════
+  #  社区指标/策略脚本库：cn.tradingview.com/pubscripts-*
+  #  发现阶段已验证，translate/create_study 全链路未验证，见分析文档 §8.2/§8.5
+  # ═══════════════════════════════════════════════════════════════
+  /pubscripts-library/:
+    get:
+      operationId: pubscriptsLibrary
+      summary: 分页浏览社区发布的指标/策略脚本
+      description: |
+        与 pine-facade/list（官方指标目录）是完全独立的服务，scriptIdPart
+        前缀为 PUB;（区别于官方的 STD;）。未见 Cookie 依赖，可无登录态访问。
+        **本次抓包只验证了发现阶段**——未实际走通任意一条 PUB; 脚本的
+        translate+create_study 编译挂载链路，不要假设与官方指标同一套流程
+        必然适用，见分析文档 §8.2。
+
+        无关键词搜索参数：只支持按 sort/type 排序过滤，不支持传关键词
+        全文检索。若需要"按关键词找指标"，只能拉全量后本地过滤。
+      tags: [技术指标]
+      parameters:
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 0
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+          example: 20
+        - name: sort
+          in: query
+          required: false
+          description: 实测枚举 top（按点赞数排序）、trending（趋势上升）
+          schema:
+            type: string
+            enum: [top, trending]
+          example: top
+        - name: type
+          in: query
+          required: false
+          description: 1=指标（study），2=策略（strategy），省略则混合返回
+          schema:
+            type: integer
+            enum: [1, 2]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PubscriptLibraryResponse'
+
+  /pubscripts-library/editors-picks/:
+    get:
+      operationId: pubscriptsEditorsPicks
+      summary: TradingView 编辑精选的社区脚本
+      description: |
+        无分页参数，一次性返回。⚠ 抓包实测该响应的 content.encoding
+        为 base64，采集实现必须先 base64 解码再当 JSON 解析——
+        与 pubscripts-library/ 主端点（明文 JSON）编码方式不一致，
+        不能对 pubscripts-* 所有响应一视同仁处理。
+      tags: [技术指标]
+      responses:
+        '200':
+          description: 成功（响应体经 base64 编码）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PubscriptLibraryResponse'
+
+  /pubscripts-get/personal-access/:
+    get:
+      operationId: pubscriptsPersonalAccess
+      summary: 当前账号已购买/被授权访问的付费社区脚本清单
+      description: |
+        需登录会话。本次抓包样本为空（账号未购买任何付费脚本），
+        default/paid_package 两个分组的真实结构未被充分样本验证。
+      tags: [技术指标]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PubscriptPersonalAccessResponse'
+
+

@@ -1,0 +1,32 @@
+{
+  "success": true,
+  "data": {
+    "title": "fake-page",
+    "link": "https://example.invalid/list",
+    "description": "从 https://example.invalid/list 提取的列表",
+    "items": [
+      {
+        "title": "测试标题甲",
+        "link": "https://example.invalid/post/1",
+        "pubDate": "2026-01-01T10:00:00Z",
+        "description": "测试摘要甲"
+      },
+      {
+        "title": "测试标题乙",
+        "link": "https://example.invalid/post/2",
+        "pubDate": "2026-01-02T10:00:00Z",
+        "description": "测试摘要乙"
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "list-extract",
+    "skillName": "列表页提取",
+    "params": {
+      "url": "https://example.invalid/list"
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

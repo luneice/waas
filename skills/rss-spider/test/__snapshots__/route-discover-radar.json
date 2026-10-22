@@ -1,0 +1,34 @@
+{
+  "success": true,
+  "data": {
+    "matchMode": "radar",
+    "radarDetections": [
+      {
+        "route": {
+          "path": "/bilibili/user/video/:uid",
+          "namespace": "bilibili",
+          "params": [
+            "uid"
+          ],
+          "optionalParams": []
+        },
+        "confidence": 0.9,
+        "extractedParams": {
+          "uid": "546195"
+        },
+        "resolvedPath": "/bilibili/user/video/546195"
+      }
+    ],
+    "count": 1
+  },
+  "metadata": {
+    "skillId": "route-discover",
+    "skillName": "RSSHub 路由发现",
+    "params": {
+      "url": "https://www.bilibili.com/video/BV1xx"
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

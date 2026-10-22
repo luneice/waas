@@ -1,0 +1,76 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-channel",
+      "semantics": "系列 id=40001（mid=546195）内的全量稿件",
+      "kind": "series",
+      "id": 40001,
+      "mid": "546195",
+      "name": "",
+      "cover": "",
+      "description": "",
+      "total": 3,
+      "pagesFetched": 1,
+      "returnedCount": 2,
+      "crawledAt": "<volatile>",
+      "units": {
+        "view": "次",
+        "danmaku": "条"
+      }
+    },
+    "insights": [
+      "系列id=40001：抓取 1 页，返回 2 个稿件（系列内共 3 个）。",
+      "尚未取全（2/3），继续增大 page/maxPages 可补齐。",
+      "样本总播放 20.0 万，均播 10.0 万。",
+      "最高播放：「测试系列稿件标题甲」10.0 万（BV1ee4y1e7e1）。",
+      "总时长约 20:00，单个平均 10:00。",
+      "发布时间跨度：2026-02-02T02:40:00.000Z ~ 2026-02-02T02:40:00.000Z。"
+    ],
+    "items": [
+      {
+        "aid": 114000000000301,
+        "bvid": "BV1ee4y1e7e1",
+        "title": "测试系列稿件标题甲",
+        "cover": "//img.example.invalid/bfs/archive/mock-114000000000301.jpg",
+        "durationSeconds": 600,
+        "duration": "10:00",
+        "publishedAt": "2026-02-02T02:40:00.000Z",
+        "url": "https://www.bilibili.com/video/BV1ee4y1e7e1",
+        "stats": {
+          "view": 100000,
+          "danmaku": 500
+        }
+      },
+      {
+        "aid": 114000000000302,
+        "bvid": "BV1ee4y1e7e2",
+        "title": "测试系列稿件标题乙",
+        "cover": "//img.example.invalid/bfs/archive/mock-114000000000302.jpg",
+        "durationSeconds": 600,
+        "duration": "10:00",
+        "publishedAt": "2026-02-02T02:40:00.000Z",
+        "url": "https://www.bilibili.com/video/BV1ee4y1e7e2",
+        "stats": {
+          "view": 100000,
+          "danmaku": 500
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-channel",
+    "skillName": "Bilibili 合集/系列详情",
+    "params": {
+      "kind": "series",
+      "id": "40001",
+      "mid": "546195",
+      "page": 1,
+      "maxPages": 1,
+      "pageSize": 30
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

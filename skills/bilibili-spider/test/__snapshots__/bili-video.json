@@ -1,0 +1,163 @@
+{
+  "meta": {
+    "skill": "bili-video",
+    "semantics": "视频「测试视频甲」（MOCKBV0000001）分 P 选流与落盘结果",
+    "source": {
+      "mode": "direct",
+      "input": "MOCKBV0000001"
+    },
+    "video": {
+      "aid": 111111,
+      "bvid": "MOCKBV0000001",
+      "title": "测试视频甲",
+      "url": "https://example.invalid/video/MOCKBV0000001",
+      "owner": {
+        "mid": 10001,
+        "name": "测试作者甲",
+        "face": null
+      },
+      "pageCount": 2
+    },
+    "requested": {
+      "qn": 80,
+      "preferCodec": "avc",
+      "partMode": "all",
+      "download": true,
+      "subtitle": true,
+      "merge": true
+    },
+    "outputDir": "/tmp/mock-store/video",
+    "files": {
+      "mediaCount": 2,
+      "mergedCount": 1,
+      "subtitleCount": 2,
+      "totalBytes": 9800
+    },
+    "crawledAt": "<volatile>"
+  },
+  "insights": [
+    "视频「测试视频甲」共 2 个分 P，本次处理 2 个。",
+    "1 个分 P 无可用 DASH 流：大会员专享，未购买。字幕等增强数据仍可用。",
+    "落盘：合并成品 1 个 + 分片 2 个，字幕 2 个，合计约 0.0 MB → /tmp/mock-store/video",
+    "总时长约 7:30。",
+    "首个分 P 选流：1920x1080 @30fps，编码 avc1.640028。"
+  ],
+  "content": {
+    "pages": [
+      {
+        "page": {
+          "cid": 201,
+          "page": 1,
+          "part": "P1 测试",
+          "duration": 300
+        },
+        "playUrl": {
+          "quality": 80,
+          "acceptQuality": [
+            80,
+            64
+          ],
+          "acceptDescription": [
+            "高清 1080P",
+            "高清 720P"
+          ],
+          "timelength": 300000
+        },
+        "selected": {
+          "video": {
+            "id": 80,
+            "bandwidth": 1500000,
+            "mimeType": "video/mp4",
+            "codecs": "avc1.640028",
+            "width": 1920,
+            "height": 1080,
+            "frameRate": "30",
+            "codecid": 7
+          },
+          "audio": {
+            "id": 30280,
+            "bandwidth": 192000,
+            "mimeType": "audio/mp4",
+            "codecs": "mp4a.40.2",
+            "width": null,
+            "height": null,
+            "frameRate": null,
+            "codecid": null
+          }
+        },
+        "streamUnavailable": null,
+        "files": [
+          {
+            "role": "merged",
+            "path": "video/mock-P1.mp4",
+            "absolutePath": "/tmp/mock-store/video/mock-P1.mp4",
+            "sizeBytes": 5000,
+            "contentType": "video/mp4"
+          },
+          {
+            "role": "video",
+            "path": "video/mock-P1-video.m4s",
+            "absolutePath": "/tmp/mock-store/video/mock-P1-video.m4s",
+            "sizeBytes": 3000,
+            "contentType": "video/mp4"
+          },
+          {
+            "role": "audio",
+            "path": "video/mock-P1-audio.m4s",
+            "absolutePath": "/tmp/mock-store/video/mock-P1-audio.m4s",
+            "sizeBytes": 1000,
+            "contentType": "audio/mp4"
+          }
+        ],
+        "merged": {
+          "role": "merged",
+          "path": "video/mock-P1.mp4",
+          "absolutePath": "/tmp/mock-store/video/mock-P1.mp4",
+          "sizeBytes": 5000,
+          "contentType": "video/mp4"
+        },
+        "subtitles": [
+          {
+            "lan": "zh-CN",
+            "lanDoc": "中文（中国）",
+            "path": "video/mock-P1.zh-CN.json",
+            "absolutePath": "/tmp/mock-store/video/mock-P1.zh-CN.json",
+            "sizeBytes": 500,
+            "contentType": "application/json"
+          }
+        ]
+      },
+      {
+        "page": {
+          "cid": 202,
+          "page": 2,
+          "part": "P2 测试",
+          "duration": 150
+        },
+        "playUrl": {
+          "quality": null,
+          "acceptQuality": [],
+          "acceptDescription": [],
+          "timelength": 150000
+        },
+        "selected": {
+          "video": null,
+          "audio": null
+        },
+        "streamUnavailable": "大会员专享，未购买",
+        "files": [],
+        "merged": null,
+        "subtitles": [
+          {
+            "lan": "zh-CN",
+            "lanDoc": "中文（中国）",
+            "path": "video/mock-P2.zh-CN.json",
+            "absolutePath": "/tmp/mock-store/video/mock-P2.zh-CN.json",
+            "sizeBytes": 300,
+            "contentType": "application/json"
+          }
+        ]
+      }
+    ]
+  }
+}

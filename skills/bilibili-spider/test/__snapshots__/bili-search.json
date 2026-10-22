@@ -1,0 +1,117 @@
+{
+  "meta": {
+    "skill": "bili-search",
+    "semantics": "Bilibili 视频搜索：关键词「测试关键词」",
+    "keyword": "测试关键词",
+    "kind": "video",
+    "query": {
+      "page": 1,
+      "maxPages": 2,
+      "pageSize": 42,
+      "order": null,
+      "pubtimeBeginS": 0,
+      "pubtimeEndS": 0,
+      "duration": null,
+      "tids": null,
+      "categoryId": null,
+      "orderSort": null,
+      "userType": null,
+      "offsetStep": 24
+    },
+    "qvId": "mock-qv-id-0001",
+    "crawledAt": "<volatile>",
+    "total": 120,
+    "totalPages": 5,
+    "pageStart": 1,
+    "pagesFetched": 2,
+    "returnedCount": 2,
+    "duplicatesRemoved": 3,
+    "pagination": {
+      "strategy": "dynamic_offset",
+      "note": "该分类按 PC 搜索页的 dynamic_offset=24 步长翻页，页间天然重叠，结果已按主键去重。",
+      "pages": [
+        {
+          "page": 1,
+          "dynamicOffset": 0,
+          "returnedCount": 3,
+          "addedCount": 2,
+          "duplicateCount": 1,
+          "totalResults": 120,
+          "totalPages": 5
+        },
+        {
+          "page": 2,
+          "dynamicOffset": 24,
+          "returnedCount": 2,
+          "addedCount": 0,
+          "duplicateCount": 2,
+          "totalResults": 120,
+          "totalPages": 5
+        }
+      ]
+    },
+    "units": {
+      "play": "次",
+      "danmaku": "条",
+      "favorite": "次",
+      "comment": "条",
+      "like": "次",
+      "view": "次",
+      "reply": "条",
+      "online": "人或热度值",
+      "attentions": "人",
+      "fans": "人",
+      "videos": "个"
+    }
+  },
+  "insights": [
+    "关键词「测试关键词」视频搜索：抓取 2 页，去重后返回 2 条。",
+    "上游可见结果数约 120 条。",
+    "翻页窗口存在重叠，本次去重移除 3 条重复结果。",
+    "首条结果：测试视频甲 @测试作者甲。"
+  ],
+  "items": [
+    {
+      "rank": 1,
+      "type": "video",
+      "id": "MOCKBV0000001",
+      "title": "测试视频甲",
+      "url": "https://example.invalid/video/MOCKBV0000001",
+      "cover": "https://example.invalid/cover/1.jpg",
+      "author": {
+        "id": "10001",
+        "name": "测试作者甲",
+        "avatar": null
+      },
+      "stats": {
+        "play": 12345,
+        "danmaku": 67,
+        "like": 890
+      },
+      "publishedAt": "2026-06-30T12:00:00.000Z",
+      "duration": "12:34",
+      "extra": {}
+    },
+    {
+      "rank": 2,
+      "type": "video",
+      "id": "MOCKBV0000002",
+      "title": "测试视频乙",
+      "url": "https://example.invalid/video/MOCKBV0000002",
+      "cover": null,
+      "author": {
+        "id": null,
+        "name": null,
+        "avatar": null
+      },
+      "stats": {
+        "play": 42
+      },
+      "publishedAt": null,
+      "duration": null,
+      "extra": {
+        "note": "mock"
+      }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+# compiled output
+bundle/*
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+.opencode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+dist
+build
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+.env
+env/
+.github
+.vscode
+
+# Yarn Berry
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+
+# spider 本地运行时数据（PDF / 解析产物 / 浏览器 artifact）
+.spider/
+
+# License 私钥与签发产物（绝不入库）
+*.pem
+license-private.pem
+*.license
+license.key

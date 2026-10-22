@@ -1,0 +1,84 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-creator-channels",
+      "semantics": "mid=546195 的合集/系列目录（含预览稿件；全量需按 kind+id 调 bili-channel）",
+      "mid": "546195",
+      "total": 3,
+      "pagesFetched": 1,
+      "returnedCount": 2,
+      "crawledAt": "<volatile>",
+      "units": {
+        "view": "次",
+        "play": "次",
+        "like": "次",
+        "coin": "个",
+        "favorite": "次",
+        "reply": "条",
+        "share": "次",
+        "danmaku": "条",
+        "follower": "人",
+        "following": "人",
+        "comment": "条",
+        "forward": "次",
+        "collect": "次"
+      }
+    },
+    "insights": [
+      "抓取 1 页，返回 2 个（合集 1，系列 1）。",
+      "覆盖稿件合计 28 个（items[].previews 只是预览，非全量）。",
+      "最大的是「测试合集甲」（season，id=30001，20 个稿件）。",
+      "取某个合集/系列的全量稿件：用 items[].kind + items[].id 调 bili-channel。"
+    ],
+    "items": [
+      {
+        "kind": "season",
+        "id": 30001,
+        "name": "测试合集甲",
+        "cover": "//img.example.invalid/bfs/archive/mock-season-30001.jpg",
+        "description": "测试合集简介",
+        "total": 20,
+        "url": "https://space.bilibili.com/546195/channel/collectiondetail?sid=30001",
+        "previews": [
+          {
+            "aid": 113000000000201,
+            "bvid": "BV1dd4y1d7d1",
+            "title": "测试合集稿件标题甲",
+            "cover": "//img.example.invalid/bfs/archive/mock-cover-201.jpg",
+            "durationSeconds": 600,
+            "duration": "10:00",
+            "publishedAt": "2026-02-02T02:40:00.000Z",
+            "stats": {
+              "view": 100000,
+              "danmaku": 500
+            }
+          }
+        ]
+      },
+      {
+        "kind": "series",
+        "id": 40001,
+        "name": "测试系列甲",
+        "cover": "//img.example.invalid/bfs/archive/mock-series-40001.jpg",
+        "description": "测试系列简介",
+        "total": 8,
+        "url": "https://space.bilibili.com/546195/channel/seriesdetail?sid=40001",
+        "previews": []
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-creator-channels",
+    "skillName": "Bilibili 创作者合集与系列",
+    "params": {
+      "mid": "546195",
+      "page": 1,
+      "maxPages": 1,
+      "pageSize": 20
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "feed": {
+      "title": "测试频道",
+      "link": "https://example.invalid/",
+      "description": "测试描述",
+      "items": [
+        {
+          "title": "完整条目甲",
+          "link": "https://example.invalid/1",
+          "pubDate": "2026-01-01T00:00:00Z",
+          "description": "这是一段足够长的正文内容，用于确保完整性评估把它判为 complete，不触发补全流程，长度必须达到默认阈值 200 字符以上才行，所以这里需要写很多很多的填充文字来凑够长度，继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充继续填充。",
+          "author": "作者甲",
+          "category": [
+            "科技"
+          ]
+        },
+        {
+          "title": "不完整条目乙",
+          "link": "https://example.invalid/2",
+          "pubDate": "2026-01-02T00:00:00Z",
+          "description": "补全后的完整正文内容",
+          "author": "作者乙"
+        },
+        {
+          "title": "无链接条目丙（unenrichable）",
+          "link": "",
+          "pubDate": "2026-01-03T00:00:00Z",
+          "description": "太短"
+        }
+      ]
+    },
+    "report": {
+      "enriched": 1,
+      "failed": 0,
+      "skipped": 0,
+      "errors": []
+    }
+  },
+  "metadata": {
+    "skillId": "rss-intelligence",
+    "skillName": "RSS 情报采集",
+    "params": {
+      "url": "https://example.invalid/feed.xml",
+      "sourceUrl": "https://example.invalid/feed.xml",
+      "totalItems": 3
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

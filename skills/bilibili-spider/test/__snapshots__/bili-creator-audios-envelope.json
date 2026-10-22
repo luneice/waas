@@ -1,0 +1,79 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-creator-audios",
+      "semantics": "mid=546195 的投稿音频列表",
+      "mid": "546195",
+      "total": 60,
+      "pagesFetched": 1,
+      "returnedCount": 2,
+      "crawledAt": "<volatile>",
+      "units": {
+        "view": "次",
+        "play": "次",
+        "like": "次",
+        "coin": "个",
+        "favorite": "次",
+        "reply": "条",
+        "share": "次",
+        "danmaku": "条",
+        "follower": "人",
+        "following": "人",
+        "comment": "条",
+        "forward": "次",
+        "collect": "次"
+      }
+    },
+    "insights": [
+      "抓取 1 页，返回音频 2 条（总数 60）。",
+      "样本总播放 9.0 万，均播 4.5 万。",
+      "最高播放：「测试音频标题乙」6.0 万。"
+    ],
+    "items": [
+      {
+        "auid": 900001,
+        "title": "测试音频标题甲",
+        "cover": "//img.example.invalid/bfs/audio/mock-cover-1.jpg",
+        "intro": "测试音频简介",
+        "bvid": "BV1cc4y1c7c1",
+        "publishedAt": "2026-02-02T02:40:01.000Z",
+        "coinCount": 100,
+        "stats": {
+          "play": 30000,
+          "collect": 2000,
+          "comment": 100,
+          "share": 50
+        }
+      },
+      {
+        "auid": 900002,
+        "title": "测试音频标题乙",
+        "cover": "//img.example.invalid/bfs/audio/mock-cover-2.jpg",
+        "intro": "测试音频简介",
+        "bvid": "BV1cc4y1c7c2",
+        "publishedAt": "2026-02-02T02:40:02.000Z",
+        "coinCount": 200,
+        "stats": {
+          "play": 60000,
+          "collect": 4000,
+          "comment": 200,
+          "share": 100
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-creator-audios",
+    "skillName": "Bilibili 创作者音频",
+    "params": {
+      "mid": "546195",
+      "page": 1,
+      "maxPages": 1,
+      "pageSize": 42
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

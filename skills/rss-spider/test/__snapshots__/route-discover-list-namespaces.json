@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "data": {
+    "matchMode": "list-namespaces",
+    "namespaces": [
+      "bilibili",
+      "github"
+    ],
+    "count": 2
+  },
+  "metadata": {
+    "skillId": "route-discover",
+    "skillName": "RSSHub 路由发现",
+    "params": {
+      "listNamespaces": true
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

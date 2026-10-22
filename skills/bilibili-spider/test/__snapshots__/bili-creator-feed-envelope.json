@@ -1,0 +1,89 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-creator-feed",
+      "semantics": "mid=546195 的动态时间线（游标翻页，按 offset 续取）",
+      "mid": "546195",
+      "pagesFetched": 1,
+      "returnedCount": 3,
+      "nextOffset": "dyn-offset-0001",
+      "hasMore": true,
+      "crawledAt": "<volatile>",
+      "units": {
+        "view": "次",
+        "play": "次",
+        "like": "次",
+        "coin": "个",
+        "favorite": "次",
+        "reply": "条",
+        "share": "次",
+        "danmaku": "条",
+        "follower": "人",
+        "following": "人",
+        "comment": "条",
+        "forward": "次",
+        "collect": "次"
+      }
+    },
+    "insights": [
+      "抓取 1 页，返回动态 3 条。",
+      "动态类型分布：archive=1，word=1，forward=1。",
+      "时间跨度：2026-02-02T02:40:00.000Z ~ 2026-02-02T02:43:20.000Z。",
+      "最高赞动态 5000 赞：测试动态文案（视频）",
+      "仍有更多动态，可携带 nextOffset 续取。"
+    ],
+    "items": [
+      {
+        "idStr": "930000000000001",
+        "kind": "archive",
+        "rawType": "DYNAMIC_TYPE_AV",
+        "text": "测试动态文案（视频）",
+        "jumpUrl": "https://www.example.invalid/video/BV1ee4y1e7e1",
+        "publishedAt": "2026-02-02T02:40:00.000Z",
+        "stats": {
+          "comment": 300,
+          "forward": 50,
+          "like": 5000
+        }
+      },
+      {
+        "idStr": "930000000000002",
+        "kind": "word",
+        "rawType": "DYNAMIC_TYPE_WORD",
+        "text": "测试纯文本动态",
+        "jumpUrl": null,
+        "publishedAt": "2026-02-02T02:41:40.000Z",
+        "stats": {
+          "comment": 10,
+          "forward": 1,
+          "like": 100
+        }
+      },
+      {
+        "idStr": "930000000000003",
+        "kind": "forward",
+        "rawType": "DYNAMIC_TYPE_FORWARD",
+        "text": "测试转发动态",
+        "jumpUrl": null,
+        "publishedAt": "2026-02-02T02:43:20.000Z",
+        "stats": {
+          "comment": 5,
+          "forward": 20,
+          "like": 200
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-creator-feed",
+    "skillName": "Bilibili 创作者动态",
+    "params": {
+      "mid": "546195",
+      "offset": ""
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

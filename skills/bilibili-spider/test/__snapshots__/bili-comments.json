@@ -1,0 +1,113 @@
+{
+  "meta": {
+    "skill": "bili-comments",
+    "semantics": "Bilibili 评论提取：oid=111111 type=1（video）",
+    "source": {
+      "oid": "111111",
+      "type": 1,
+      "origin": "video",
+      "mode": 3
+    },
+    "total": 256,
+    "returnedCount": 2,
+    "pagesFetched": 1,
+    "nextOffset": null,
+    "hasMore": false,
+    "outputDir": "/tmp/mock-store/comments",
+    "files": {
+      "markdown": "comments-111111.md",
+      "meta": "comments-111111.meta.json",
+      "images": [
+        "images/900002-1.jpg"
+      ]
+    },
+    "crawledAt": "<volatile>",
+    "units": {
+      "like": "次",
+      "reply": "条"
+    }
+  },
+  "insights": [
+    "按热度抓取主楼 2 条（共 1 页，评论区总数 256）。",
+    "含置顶评论 1 条。",
+    "评论配图 1 张（已本地化）。",
+    "评论区已抓到底。"
+  ],
+  "topItems": [
+    {
+      "rpid": "900001",
+      "user": {
+        "mid": 10001,
+        "name": "测试作者甲",
+        "avatar": "",
+        "level": 6
+      },
+      "message": "置顶：测试公告",
+      "images": [],
+      "like": 999,
+      "publishedAt": 1751328000,
+      "location": "测试省",
+      "replyCount": 0,
+      "replies": []
+    }
+  ],
+  "items": [
+    {
+      "rpid": "900002",
+      "user": {
+        "mid": 20002,
+        "name": "测试用户乙",
+        "avatar": "",
+        "level": 4
+      },
+      "message": "主楼：带图评论",
+      "images": [
+        {
+          "src": "images/900002-1.jpg",
+          "remoteUrl": "https://example.invalid/img/1.jpg",
+          "localized": true,
+          "width": 100,
+          "height": 100
+        }
+      ],
+      "like": 45,
+      "publishedAt": 1751328100,
+      "location": null,
+      "replyCount": 1,
+      "replies": [
+        {
+          "rpid": "900003",
+          "user": {
+            "mid": 30003,
+            "name": "测试用户丙",
+            "avatar": "",
+            "level": 2
+          },
+          "message": "楼中楼回复",
+          "images": [],
+          "like": 3,
+          "publishedAt": 1751328200,
+          "location": "测试市",
+          "replyCount": 0,
+          "replies": []
+        }
+      ]
+    },
+    {
+      "rpid": "900004",
+      "user": {
+        "mid": 40004,
+        "name": "测试用户丁",
+        "avatar": "",
+        "level": 5
+      },
+      "message": "主楼：纯文字",
+      "images": [],
+      "like": 7,
+      "publishedAt": 1751328300,
+      "location": null,
+      "replyCount": 0,
+      "replies": []
+    }
+  ]
+}

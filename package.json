@@ -1,0 +1,56 @@
+{
+  "name": "spider",
+  "version": "1.0.103",
+  "private": true,
+  "description": "Task-driven web spider system",
+  "workspaces": [
+    "packages/*",
+    "skills/*",
+    "skills/_shared/*"
+  ],
+  "scripts": {
+    "build": "node scripts/build-skill.js",
+    "gen:error-table": "node scripts/gen-error-table.ts",
+    "gen:error-table:check": "node scripts/gen-error-table.ts --check",
+    "test": "vitest run",
+    "test:all": "vitest run",
+    "test:core": "vitest run --project core",
+    "build:rss-spider": "node scripts/build-skill.js rss-spider",
+    "build:rss-spider:global": "node scripts/build-skill.js rss-spider --target global",
+    "build:tradingview-spider": "node scripts/build-skill.js tradingview-spider",
+    "build:tradingview-spider:global": "node scripts/build-skill.js tradingview-spider --target global",
+    "build:bilibili-spider": "node scripts/build-skill.js bilibili-spider",
+    "build:bilibili-spider:global": "node scripts/build-skill.js bilibili-spider --target global",
+    "build:xueqiu-spider": "node scripts/build-skill.js xueqiu-spider",
+    "build:xueqiu-spider:global": "node scripts/build-skill.js xueqiu-spider --target global",
+    "lint": "eslint packages/*/src/**/*.ts skills/*/src/**/*.ts"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.5",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.3.1",
+    "puppeteer-core": "^24.37.3",
+    "reflect-metadata": "^0.2.2",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.1",
+    "@types/puppeteer-core": "^7.0.4",
+    "@types/uuid": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.11.0",
+    "@typescript-eslint/parser": "^6.11.0",
+    "bytenode": "^1.6.0",
+    "esbuild": "^0.28.0",
+    "eslint": "^8.53.0",
+    "javascript-obfuscator": "^5.5.0",
+    "prettier": "^3.1.0",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.2.2",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.10"
+  },
+  "packageManager": "yarn@4.12.0"
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    // rootDir 放到包根而非 src —— test/ 要参与 typecheck（docs/TESTING.md §5）。
+    // core 从不 emit（main 指向 src/index.ts，产物由各 skill 的 esbuild 从源码打包），
+    // rootDir 在这里只影响 tsc 的"文件必须位于 rootDir 之下"检查。
+    "rootDir": ".",
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    // 仅供 test/ 引用 src（core 的 src 内部一律相对路径，不受影响）
+    "paths": {
+      "@src/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

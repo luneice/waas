@@ -1,0 +1,76 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-channel",
+      "semantics": "合集 id=30001（mid=546195）内的全量稿件",
+      "kind": "season",
+      "id": 30001,
+      "mid": "546195",
+      "name": "测试合集甲",
+      "cover": "//img.example.invalid/bfs/archive/mock-season-30001.jpg",
+      "description": "测试合集简介",
+      "total": 3,
+      "pagesFetched": 1,
+      "returnedCount": 2,
+      "crawledAt": "<volatile>",
+      "units": {
+        "view": "次",
+        "danmaku": "条"
+      }
+    },
+    "insights": [
+      "合集「测试合集甲」：抓取 1 页，返回 2 个稿件（合集内共 3 个）。",
+      "尚未取全（2/3），继续增大 page/maxPages 可补齐。",
+      "样本总播放 20.0 万，均播 10.0 万。",
+      "最高播放：「测试合集稿件标题甲」10.0 万（BV1dd4y1d7d1）。",
+      "总时长约 20:00，单个平均 10:00。",
+      "发布时间跨度：2026-02-02T02:40:00.000Z ~ 2026-02-02T02:40:00.000Z。"
+    ],
+    "items": [
+      {
+        "aid": 113000000000201,
+        "bvid": "BV1dd4y1d7d1",
+        "title": "测试合集稿件标题甲",
+        "cover": "//img.example.invalid/bfs/archive/mock-113000000000201.jpg",
+        "durationSeconds": 600,
+        "duration": "10:00",
+        "publishedAt": "2026-02-02T02:40:00.000Z",
+        "url": "https://www.bilibili.com/video/BV1dd4y1d7d1",
+        "stats": {
+          "view": 100000,
+          "danmaku": 500
+        }
+      },
+      {
+        "aid": 113000000000202,
+        "bvid": "BV1dd4y1d7d2",
+        "title": "测试合集稿件标题乙",
+        "cover": "//img.example.invalid/bfs/archive/mock-113000000000202.jpg",
+        "durationSeconds": 600,
+        "duration": "10:00",
+        "publishedAt": "2026-02-02T02:40:00.000Z",
+        "url": "https://www.bilibili.com/video/BV1dd4y1d7d2",
+        "stats": {
+          "view": 100000,
+          "danmaku": 500
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-channel",
+    "skillName": "Bilibili 合集/系列详情",
+    "params": {
+      "kind": "season",
+      "id": "30001",
+      "mid": "546195",
+      "page": 1,
+      "maxPages": 1,
+      "pageSize": 30
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

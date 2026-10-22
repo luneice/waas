@@ -1,0 +1,155 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-comments",
+      "semantics": "Bilibili 评论提取：oid=113000000000201 type=1（direct）",
+      "source": {
+        "oid": "113000000000201",
+        "type": 1,
+        "origin": "direct",
+        "mode": 3
+      },
+      "total": 100,
+      "returnedCount": 2,
+      "pagesFetched": 1,
+      "nextOffset": "cm-offset-0001",
+      "hasMore": true,
+      "outputDir": "<tmpdir>",
+      "files": {
+        "markdown": "views/by-subject/video-113000000000201/comments.md",
+        "meta": "views/by-subject/video-113000000000201/meta.json",
+        "images": [
+          "views/by-subject/video-113000000000201/assets/img-001.jpg"
+        ]
+      },
+      "crawledAt": "<volatile>",
+      "units": {
+        "like": "次",
+        "reply": "条"
+      }
+    },
+    "insights": [
+      "按热度抓取主楼 2 条（共 1 页，评论区总数 100）。",
+      "含置顶评论 1 条。",
+      "评论配图 1 张（已本地化）。",
+      "仍有更多评论，可携带 nextOffset 续取。"
+    ],
+    "topItems": [
+      {
+        "rpid": "9000000001",
+        "user": {
+          "mid": 546195,
+          "name": "测试置顶用户",
+          "avatar": "https://img.example.invalid/bfs/face/mock-9000000001.jpg",
+          "level": 5
+        },
+        "message": "测试置顶评论",
+        "images": [],
+        "like": 999,
+        "publishedAt": 1770000000,
+        "location": "广东",
+        "replyCount": 0,
+        "replies": []
+      }
+    ],
+    "items": [
+      {
+        "rpid": "1000000001",
+        "user": {
+          "mid": 546195,
+          "name": "测试用户甲",
+          "avatar": "https://img.example.invalid/bfs/face/mock-1000000001.jpg",
+          "level": 5
+        },
+        "message": "测试评论甲",
+        "images": [],
+        "like": 100,
+        "publishedAt": 1770000100,
+        "location": "广东",
+        "replyCount": 0,
+        "replies": []
+      },
+      {
+        "rpid": "1000000002",
+        "user": {
+          "mid": 546195,
+          "name": "测试用户乙",
+          "avatar": "https://img.example.invalid/bfs/face/mock-1000000002.jpg",
+          "level": 5
+        },
+        "message": "测试评论乙（带配图+热评）",
+        "images": [
+          {
+            "src": "assets/img-001.jpg",
+            "remoteUrl": "https://img.example.invalid/bfs/comment/mock-1000000002.jpg",
+            "localized": true,
+            "width": 200,
+            "height": 150
+          }
+        ],
+        "like": 200,
+        "publishedAt": 1770000200,
+        "location": "广东",
+        "replyCount": 3,
+        "replies": [
+          {
+            "rpid": "2000000001",
+            "user": {
+              "mid": 546196,
+              "name": "测试用户乙",
+              "avatar": "https://img.example.invalid/bfs/face/mock-nested.jpg",
+              "level": 3
+            },
+            "message": "内嵌热门子回复",
+            "images": [],
+            "like": 5,
+            "publishedAt": 1770000205,
+            "location": null,
+            "replyCount": 0,
+            "replies": []
+          }
+        ]
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-comments",
+    "skillName": "Bilibili 评论提取",
+    "params": {
+      "oid": "113000000000201",
+      "type": 1,
+      "maxPages": 1,
+      "mode": 3,
+      "offset": "",
+      "includeReplies": false,
+      "repliesLimit": 10,
+      "downloadImages": true,
+      "imageTimeoutMs": 30000
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  },
+  "artifacts": [
+    {
+      "path": "views/by-subject/video-113000000000201/assets/img-001.jpg",
+      "role": "comment-image",
+      "contentType": "image/png",
+      "sourceUrl": "https://img.example.invalid/bfs/comment/mock-1000000002.jpg",
+      "sizeBytes": 68
+    },
+    {
+      "path": "views/by-subject/video-113000000000201/comments.md",
+      "role": "comments-markdown",
+      "contentType": "text/markdown",
+      "sizeBytes": 585
+    },
+    {
+      "path": "views/by-subject/video-113000000000201/meta.json",
+      "role": "comments-meta",
+      "contentType": "application/json",
+      "sizeBytes": 1439
+    }
+  ]
+}

@@ -1,0 +1,179 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-search",
+      "semantics": "Bilibili 视频搜索：关键词「测试」",
+      "keyword": "测试",
+      "kind": "video",
+      "query": {
+        "page": 1,
+        "maxPages": 1,
+        "pageSize": 42,
+        "order": null,
+        "pubtimeBeginS": 0,
+        "pubtimeEndS": 0,
+        "duration": null,
+        "tids": null,
+        "categoryId": null,
+        "orderSort": null,
+        "userType": null,
+        "offsetStep": 24
+      },
+      "qvId": "mock-qv-id-0001",
+      "crawledAt": "<volatile>",
+      "total": 1000,
+      "totalPages": 24,
+      "pageStart": 1,
+      "pagesFetched": 1,
+      "returnedCount": 3,
+      "duplicatesRemoved": 0,
+      "pagination": {
+        "strategy": "dynamic_offset",
+        "note": "该分类按 PC 搜索页的 dynamic_offset=24 步长翻页，页间天然重叠，结果已按主键去重。",
+        "pages": [
+          {
+            "page": 1,
+            "dynamicOffset": 0,
+            "returnedCount": 3,
+            "addedCount": 3,
+            "duplicateCount": 0,
+            "totalResults": 1000,
+            "totalPages": 24
+          }
+        ]
+      },
+      "units": {
+        "play": "次",
+        "danmaku": "条",
+        "favorite": "次",
+        "comment": "条",
+        "like": "次",
+        "view": "次",
+        "reply": "条",
+        "online": "人或热度值",
+        "attentions": "人",
+        "fans": "人",
+        "videos": "个"
+      }
+    },
+    "insights": [
+      "关键词「测试」视频搜索：抓取 1 页，去重后返回 3 条。",
+      "上游可见结果数约 1000 条。",
+      "首条结果：测试视频甲：合集汇总 @测试UP甲。"
+    ],
+    "items": [
+      {
+        "rank": 1,
+        "type": "video",
+        "id": "BV1AjGD6mEJ6",
+        "title": "测试视频甲：合集汇总",
+        "url": "http://www.example.invalid/video/av116648174421738",
+        "cover": "//img.example.invalid/bfs/archive/mock-1.jpg",
+        "author": {
+          "id": "3691007780588329",
+          "name": "测试UP甲",
+          "avatar": "https://img.example.invalid/bfs/face/mock-1.jpg"
+        },
+        "stats": {
+          "play": 23489,
+          "danmaku": 1,
+          "favorite": 101,
+          "comment": 1,
+          "like": 117
+        },
+        "publishedAt": "2026-05-28T01:30:00.000Z",
+        "duration": "331:14",
+        "extra": {
+          "aid": 116648174421738,
+          "bvid": "BV1AjGD6mEJ6",
+          "typeid": "71",
+          "typename": "综艺",
+          "tag": "测试标签A,测试标签B"
+        }
+      },
+      {
+        "rank": 2,
+        "type": "video",
+        "id": "BV1AjGD6mEJ7",
+        "title": "盘点测试瞬间",
+        "url": "http://www.example.invalid/video/av116648174421739",
+        "cover": "//img.example.invalid/bfs/archive/mock-2.jpg",
+        "author": {
+          "id": "3691007780588330",
+          "name": "测试UP乙",
+          "avatar": "https://img.example.invalid/bfs/face/mock-2.jpg"
+        },
+        "stats": {
+          "play": 88000,
+          "danmaku": 320,
+          "favorite": 1200,
+          "comment": 45,
+          "like": 5600
+        },
+        "publishedAt": "2026-05-28T01:31:40.000Z",
+        "duration": "12:34",
+        "extra": {
+          "aid": 116648174421739,
+          "bvid": "BV1AjGD6mEJ7",
+          "typeid": "71",
+          "typename": "综艺",
+          "tag": "测试标签A,测试标签B"
+        }
+      },
+      {
+        "rank": 3,
+        "type": "video",
+        "id": "BV1AjGD6mEJ8",
+        "title": "测试视频丙（与第 2 页首条重复）",
+        "url": "http://www.example.invalid/video/av116648174421740",
+        "cover": "//img.example.invalid/bfs/archive/mock-3.jpg",
+        "author": {
+          "id": "3691007780588331",
+          "name": "测试UP丙",
+          "avatar": "https://img.example.invalid/bfs/face/mock-3.jpg"
+        },
+        "stats": {
+          "play": 4200,
+          "danmaku": 8,
+          "favorite": 30,
+          "comment": 2,
+          "like": 210
+        },
+        "publishedAt": "2026-05-28T01:33:20.000Z",
+        "duration": "05:20",
+        "extra": {
+          "aid": 116648174421740,
+          "bvid": "BV1AjGD6mEJ8",
+          "typeid": "71",
+          "typename": "综艺",
+          "tag": "测试标签A,测试标签B"
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-search",
+    "skillName": "Bilibili 搜索",
+    "params": {
+      "keyword": "测试",
+      "kind": "video",
+      "page": 1,
+      "maxPages": 1,
+      "pageSize": 42,
+      "order": "",
+      "pubtimeBeginS": 0,
+      "pubtimeEndS": 0,
+      "duration": "",
+      "tids": "",
+      "categoryId": 0,
+      "orderSort": 0,
+      "userType": 0,
+      "offsetStep": 24,
+      "qvId": "mock-qv-id-0001"
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-creator-videos",
+      "semantics": "mid=546195 的投稿视频列表（排序 pubdate）",
+      "mid": "546195",
+      "order": "pubdate",
+      "tid": 0,
+      "keyword": "",
+      "total": 300,
+      "pagesFetched": 2,
+      "returnedCount": 3,
+      "duplicatesRemoved": 1,
+      "partitions": [
+        {
+          "tid": 17,
+          "name": "单机游戏",
+          "count": 100
+        },
+        {
+          "tid": 21,
+          "name": "日常",
+          "count": 200
+        }
+      ],
+      "crawledAt": "<volatile>",
+      "units": {
+        "view": "次",
+        "play": "次",
+        "like": "次",
+        "coin": "个",
+        "favorite": "次",
+        "reply": "条",
+        "share": "次",
+        "danmaku": "条",
+        "follower": "人",
+        "following": "人",
+        "comment": "条",
+        "forward": "次",
+        "collect": "次"
+      }
+    },
+    "insights": [
+      "抓取 2 页，返回投稿 3 条（该 UP 投稿总数 300）。",
+      "翻页窗口重叠，已去重移除 1 条。",
+      "本次样本总播放 300.0 万，均播 100.0 万。",
+      "最高播放：「测试视频标题丙」150.0 万（BV1bb4y1b7b3）。",
+      "主要分区分布：日常(200)、单机游戏(100)。"
+    ],
+    "items": [
+      {
+        "aid": 113000000000101,
+        "bvid": "BV1bb4y1b7b1",
+        "title": "测试视频标题甲",
+        "description": "测试视频简介",
+        "cover": "//img.example.invalid/bfs/archive/mock-cover-1.jpg",
+        "url": "https://www.bilibili.com/video/BV1bb4y1b7b1",
+        "duration": "10:00",
+        "publishedAt": "2026-02-02T02:40:01.000Z",
+        "typeId": 21,
+        "stats": {
+          "play": 500000,
+          "comment": 3000,
+          "danmaku": 200
+        }
+      },
+      {
+        "aid": 113000000000102,
+        "bvid": "BV1bb4y1b7b2",
+        "title": "测试视频标题乙",
+        "description": "测试视频简介",
+        "cover": "//img.example.invalid/bfs/archive/mock-cover-2.jpg",
+        "url": "https://www.bilibili.com/video/BV1bb4y1b7b2",
+        "duration": "10:00",
+        "publishedAt": "2026-02-02T02:40:02.000Z",
+        "typeId": 21,
+        "stats": {
+          "play": 1000000,
+          "comment": 6000,
+          "danmaku": 400
+        }
+      },
+      {
+        "aid": 113000000000103,
+        "bvid": "BV1bb4y1b7b3",
+        "title": "测试视频标题丙",
+        "description": "测试视频简介",
+        "cover": "//img.example.invalid/bfs/archive/mock-cover-3.jpg",
+        "url": "https://www.bilibili.com/video/BV1bb4y1b7b3",
+        "duration": "10:00",
+        "publishedAt": "2026-02-02T02:40:03.000Z",
+        "typeId": 21,
+        "stats": {
+          "play": 1500000,
+          "comment": 9000,
+          "danmaku": 600
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-creator-videos",
+    "skillName": "Bilibili 创作者投稿视频",
+    "params": {
+      "mid": "546195",
+      "order": "pubdate",
+      "tid": 0,
+      "keyword": "",
+      "page": 1,
+      "maxPages": 2,
+      "pageSize": 25
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-creator",
+      "semantics": "创作者名片：mid=546195（资料卡 + 各模块条目数 + 代表作）",
+      "mid": "546195",
+      "crawledAt": "<volatile>",
+      "units": {
+        "view": "次",
+        "play": "次",
+        "like": "次",
+        "coin": "个",
+        "favorite": "次",
+        "reply": "条",
+        "share": "次",
+        "danmaku": "条",
+        "follower": "人",
+        "following": "人",
+        "comment": "条",
+        "forward": "次",
+        "collect": "次"
+      }
+    },
+    "insights": [
+      "「测试UP主甲」（Lv6），mid=546195。",
+      "粉丝 50.0 万，关注 100。",
+      "累计视频播放 8000.0 万，专栏阅读 20.0 万，获赞 300.0 万。",
+      "各模块条目数：video=300，article=12（可据此决定是否调下游列表 Skill）。",
+      "代表作 1 个，首个「测试代表作标题」播放 500.0 万。"
+    ],
+    "detail": {
+      "mid": "546195",
+      "name": "测试UP主甲",
+      "avatar": "//img.example.invalid/bfs/face/mock-face.jpg",
+      "signature": "测试个性签名",
+      "sex": "男",
+      "level": 6,
+      "birthday": "01-01",
+      "official": {
+        "role": 0,
+        "title": "",
+        "type": -1
+      },
+      "vip": {
+        "type": 2,
+        "status": 1,
+        "label": "年度大会员"
+      },
+      "liveRoom": {
+        "roomId": 12345,
+        "title": "测试直播间标题",
+        "url": "https://live.example.invalid/12345",
+        "liveStatus": 0
+      },
+      "relation": {
+        "following": 100,
+        "follower": 500000,
+        "black": 0,
+        "whisper": 0
+      },
+      "upstat": {
+        "archiveView": 80000000,
+        "articleView": 200000,
+        "likes": 3000000
+      },
+      "moduleCounts": {
+        "video": 300,
+        "article": 12,
+        "album": 0,
+        "bangumi": 0,
+        "cheese": 0
+      },
+      "notice": "测试空间公告内容",
+      "masterpiece": [
+        {
+          "aid": 113000000000001,
+          "bvid": "BV1aa4y1a7a1",
+          "title": "测试代表作标题",
+          "cover": "//img.example.invalid/bfs/archive/mock-cover-1.jpg",
+          "description": "测试代表作简介",
+          "durationSeconds": 600,
+          "duration": "10:00",
+          "publishedAt": "2026-02-02T02:40:00.000Z",
+          "url": "https://b23.example.invalid/mock1",
+          "stats": {
+            "view": 5000000,
+            "like": 300000,
+            "coin": 50000,
+            "favorite": 80000,
+            "reply": 3000,
+            "share": 1000,
+            "danmaku": 20000
+          }
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "skillId": "bili-creator",
+    "skillName": "Bilibili 创作者名片",
+    "params": {
+      "mid": "546195"
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

@@ -1,0 +1,177 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-video",
+      "semantics": "视频「测试视频甲」（BV1ff4y1f7f1）分 P 选流与落盘结果",
+      "source": {
+        "mode": "direct",
+        "input": "BV1ff4y1f7f1"
+      },
+      "video": {
+        "aid": 113000000000401,
+        "bvid": "BV1ff4y1f7f1",
+        "title": "测试视频甲",
+        "url": "https://www.bilibili.com/video/BV1ff4y1f7f1/",
+        "owner": {
+          "mid": 546195,
+          "name": "测试UP主甲",
+          "face": "//img.example.invalid/bfs/face/mock-546195.jpg"
+        },
+        "pageCount": 1
+      },
+      "requested": {
+        "qn": 80,
+        "preferCodec": "avc",
+        "partMode": "selected",
+        "download": true,
+        "subtitle": true,
+        "merge": true
+      },
+      "outputDir": "<tmpdir>",
+      "files": {
+        "mediaCount": 2,
+        "mergedCount": 1,
+        "subtitleCount": 0,
+        "totalBytes": 7128
+      },
+      "crawledAt": "<volatile>"
+    },
+    "insights": [
+      "视频「测试视频甲」共 1 个分 P，本次处理 1 个。",
+      "落盘：合并成品 1 个 + 分片 2 个，字幕 0 个，合计约 0.0 MB → <tmpdir>",
+      "总时长约 5:00。",
+      "首个分 P 选流：1920x1080 @30fps，编码 avc1.640028。"
+    ],
+    "content": {
+      "pages": [
+        {
+          "page": {
+            "cid": 900000001,
+            "page": 1,
+            "part": "P1 正片",
+            "duration": 300
+          },
+          "playUrl": {
+            "quality": 80,
+            "acceptQuality": [
+              80,
+              64,
+              32
+            ],
+            "acceptDescription": [
+              "高清 1080P",
+              "高清 720P",
+              "清晰 480P"
+            ],
+            "timelength": 300000
+          },
+          "selected": {
+            "video": {
+              "id": 80,
+              "bandwidth": 1500000,
+              "mimeType": "video/mp4",
+              "codecs": "avc1.640028",
+              "width": 1920,
+              "height": 1080,
+              "frameRate": "30",
+              "codecid": 7
+            },
+            "audio": {
+              "id": 30280,
+              "bandwidth": 192000,
+              "mimeType": "audio/mp4",
+              "codecs": "mp4a.40.2",
+              "width": null,
+              "height": null,
+              "frameRate": null,
+              "codecid": null
+            }
+          },
+          "streamUnavailable": null,
+          "files": [
+            {
+              "role": "merged",
+              "path": "views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - 1080p - avc.mp4",
+              "absolutePath": "<tmpdir>/views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - 1080p - avc.mp4",
+              "sizeBytes": 3465,
+              "contentType": "video/mp4"
+            },
+            {
+              "role": "video",
+              "path": "views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - 1080p - avc - video.m4s",
+              "absolutePath": "<tmpdir>/views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - 1080p - avc - video.m4s",
+              "sizeBytes": 2747,
+              "contentType": "video/mp4"
+            },
+            {
+              "role": "audio",
+              "path": "views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - audio.m4s",
+              "absolutePath": "<tmpdir>/views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - audio.m4s",
+              "sizeBytes": 916,
+              "contentType": "audio/mp4"
+            }
+          ],
+          "merged": {
+            "role": "merged",
+            "path": "views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - 1080p - avc.mp4",
+            "absolutePath": "<tmpdir>/views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - 1080p - avc.mp4",
+            "sizeBytes": 3465,
+            "contentType": "video/mp4"
+          },
+          "subtitles": []
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "skillId": "bili-video",
+    "skillName": "Bilibili 视频",
+    "params": {
+      "bvid": "BV1ff4y1f7f1",
+      "part": 1,
+      "partMode": "selected",
+      "qn": 80,
+      "fnval": 4048,
+      "preferCodec": "avc",
+      "download": true,
+      "subtitle": true,
+      "merge": true,
+      "keepParts": true,
+      "chunkSizeBytes": 4194304,
+      "chunkTimeoutMs": 30000,
+      "ffmpegPath": "ffmpeg"
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  },
+  "artifacts": [
+    {
+      "path": "views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - 1080p - avc.mp4",
+      "role": "merged",
+      "contentType": "video/mp4",
+      "sizeBytes": 3465
+    },
+    {
+      "path": "views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - 1080p - avc - video.m4s",
+      "role": "video",
+      "contentType": "video/mp4",
+      "sourceUrl": "https://cdn.example.invalid/video/mock-80.m4s",
+      "sizeBytes": 2747
+    },
+    {
+      "path": "views/by-creator/546195/videos/BV1ff4y1f7f1/P01 - P1 正片 - audio.m4s",
+      "role": "audio",
+      "contentType": "audio/mp4",
+      "sourceUrl": "https://cdn.example.invalid/audio/mock-30280.m4s",
+      "sizeBytes": 916
+    },
+    {
+      "path": "views/by-creator/546195/videos/BV1ff4y1f7f1/meta.json",
+      "role": "video-meta",
+      "contentType": "application/json",
+      "sizeBytes": 1426
+    }
+  ]
+}

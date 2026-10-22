@@ -1,0 +1,4 @@
+# 抓包原始文件不入库：含真实会话 JWT（user_id / 用户名），且体量达数十 MB。
+# 分析结论已完整落在 docs/tradingview-API分析.md 与 docs/api/openapi.yaml，
+# 需要复现时按文档重新抓包即可。
+*.har

@@ -1,0 +1,72 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-creator-articles",
+      "semantics": "mid=546195 的图文专栏列表（游标翻页；正文需用 opusId 调 bili-article）",
+      "mid": "546195",
+      "pagesFetched": 1,
+      "returnedCount": 2,
+      "nextOffset": "opus-offset-0001",
+      "hasMore": true,
+      "crawledAt": "<volatile>",
+      "units": {
+        "view": "次",
+        "play": "次",
+        "like": "次",
+        "coin": "个",
+        "favorite": "次",
+        "reply": "条",
+        "share": "次",
+        "danmaku": "条",
+        "follower": "人",
+        "following": "人",
+        "comment": "条",
+        "forward": "次",
+        "collect": "次"
+      }
+    },
+    "insights": [
+      "抓取 1 页，返回图文 2 篇。",
+      "列表仅含摘要；需要正文时用 opusId 调 bili-article 逐篇提取。",
+      "仍有更多图文，可携带 nextOffset 续取。"
+    ],
+    "items": [
+      {
+        "opusId": "820000000000001",
+        "summary": "测试图文正文摘要甲",
+        "cover": "//img.example.invalid/bfs/new_dyn/mock-820000000000001.jpg",
+        "url": "https://www.example.invalid/opus/820000000000001",
+        "stats": {
+          "view": 30000,
+          "like": 2000,
+          "comment": 300,
+          "forward": 50
+        }
+      },
+      {
+        "opusId": "820000000000002",
+        "summary": "测试图文正文摘要乙",
+        "cover": "//img.example.invalid/bfs/new_dyn/mock-820000000000002.jpg",
+        "url": "https://www.example.invalid/opus/820000000000002",
+        "stats": {
+          "view": 30000,
+          "like": 2000,
+          "comment": 300,
+          "forward": 50
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-creator-articles",
+    "skillName": "Bilibili 创作者图文",
+    "params": {
+      "mid": "546195",
+      "offset": ""
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  }
+}

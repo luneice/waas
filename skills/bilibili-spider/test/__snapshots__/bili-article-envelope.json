@@ -1,0 +1,112 @@
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "skill": "bili-article",
+      "semantics": "Bilibili 专栏图文提取：「测试专栏标题」",
+      "source": {
+        "mode": "direct",
+        "input": "820000000000001"
+      },
+      "opusId": "820000000000001",
+      "cvId": "820000000000001",
+      "articleType": null,
+      "title": "测试专栏标题",
+      "author": {
+        "mid": 546195,
+        "name": "测试作者名",
+        "pubTime": "2026-01-01 12:00"
+      },
+      "stat": {
+        "like": 2000,
+        "coin": 100,
+        "favorite": 80,
+        "forward": 50,
+        "comment": 300
+      },
+      "outputDir": "<tmpdir>",
+      "files": {
+        "markdown": "views/by-creator/546195/articles/opus-820000000000001/article.md",
+        "meta": "views/by-creator/546195/articles/opus-820000000000001/meta.json",
+        "images": [
+          "views/by-creator/546195/articles/opus-820000000000001/assets/img-001.jpg"
+        ]
+      },
+      "paragraphs": {
+        "total": 3,
+        "text": 1,
+        "image": 1,
+        "linkCard": 1,
+        "unknown": 0
+      },
+      "warnings": [],
+      "crawledAt": "<volatile>"
+    },
+    "insights": [
+      "专栏「测试专栏标题」提取完成：3 段（文字 1 / 图片 1 / 链接卡 1）。",
+      "下载并本地化配图 1 张。"
+    ],
+    "content": [
+      {
+        "type": "text",
+        "text": "正文第一段纯文本，介绍背景信息。"
+      },
+      {
+        "type": "image",
+        "images": [
+          {
+            "src": "assets/img-001.jpg",
+            "remoteUrl": "https://img.example.invalid/bfs/new_dyn/mock-img-1.jpg",
+            "localized": true,
+            "comment": "配图说明甲",
+            "width": null,
+            "height": null
+          }
+        ]
+      },
+      {
+        "type": "link_card",
+        "card": {
+          "kind": "LINK_CARD_TYPE_GOODS",
+          "title": "测试商品标题",
+          "price": "￥99.00",
+          "jumpUrl": "https://www.example.invalid/goods/1"
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "skillId": "bili-article",
+    "skillName": "Bilibili 专栏提取",
+    "params": {
+      "opusId": "820000000000001",
+      "downloadImages": true,
+      "includeLinkCards": false,
+      "imageTimeoutMs": 30000
+    },
+    "startedAt": "<volatile>",
+    "completedAt": "<volatile>",
+    "durationMs": "<volatile>"
+  },
+  "artifacts": [
+    {
+      "path": "views/by-creator/546195/articles/opus-820000000000001/assets/img-001.jpg",
+      "role": "article-image",
+      "contentType": "image/png",
+      "sourceUrl": "https://img.example.invalid/bfs/new_dyn/mock-img-1.jpg",
+      "sizeBytes": 68
+    },
+    {
+      "path": "views/by-creator/546195/articles/opus-820000000000001/article.md",
+      "role": "article-markdown",
+      "contentType": "text/markdown",
+      "sizeBytes": 168
+    },
+    {
+      "path": "views/by-creator/546195/articles/opus-820000000000001/meta.json",
+      "role": "article-meta",
+      "contentType": "application/json",
+      "sizeBytes": 1634
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+/dist
+/build
+/bundle
+/node_modules
+/coverage
+package-lock.json

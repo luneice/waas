@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "target": "ES2020",
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "lib": ["ES2020", "dom"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": false,
+    "paths": {
+      "@src/*": ["./src/*"]
+    },
+    "skipLibCheck": true
+  },
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

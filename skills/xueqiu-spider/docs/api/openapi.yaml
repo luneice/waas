@@ -1,0 +1,3256 @@
+openapi: 3.1.0
+info:
+  title: 雪球（xueqiu）A 股财务数据 API
+  description: |
+    雪球个股财务数据接口文档，基于 HAR 抓包逆向整理。
+    人读导航、通用约定、字段字典与勾稽关系见同目录 [`README.md`](./README.md)。
+
+    **当前覆盖 10 个端点，分两组**：
+
+    | 组 | 前缀 | 端点 | 样本 |
+    | --- | --- | --- | --- |
+    | **A · 财务报表** | `finance/cn/**` | 利润表 / 资产负债表 / 现金流量表 / 主要财务指标 | 赛力斯 SH601127 |
+    | **B · 股权与公司运作** | `f10/cn/**` | 分红增发 / 十大股东 / 股东人数 / 基金持股 / 限售解禁 / 高管增减持 | 宁德时代 SZ300750 |
+
+    ⚠️ **8 个 B 组 HAR 收敛为 6 个端点**：`bonus.json` 同时承载分红与增发；
+    `top_holders.json` 靠 `circula=0/1` 区分全体/流通股东。
+
+    ## 两组的共性与差异
+
+    **完全一致**（可共用同一套实现）：响应信封、`error_code` 语义与类型漂移、
+    鉴权（登录态 Cookie）、CORS 策略、导航目标（`/snowman/S/{symbol}/detail`）。
+
+    **必须逐组区分**：
+
+    | 维度 | A 组 | B 组 |
+    | --- | --- | --- |
+    | 入参 | 统一 5 个 | 各端点不同 |
+    | 翻页 | 统一 `timestamp` 游标 | **三种范式并存**（page/size、`locate`、`timestamp`） |
+    | `data` 形态 | 统一 `{…, list[]}` | `items` / `fund_items` / 多块并列 |
+    | 数值形态 | `[值, 同比]` 二元组 | **标量** |
+
+    ## A 组端点族共性
+
+    四端点的**入参、响应信封、`data` 外层键、翻页机制、鉴权方式完全一致**，
+    差异在 `list[]` 的字段集、`type` 的语义正确性与**单位口径**。共用组件见 `components`：
+    `SymbolParam` / `TypeParam` / `IsDetailParam` / `CountParam` / `TimestampParam`、
+    `FinanceEnvelopeBase` / `FinanceDataBase` / `ValueWithYoY`。
+
+    ⚠️ **前三个是原始报表，`indicator.json` 是衍生指标**，性质不同：
+    报表单位统一（元 / 小数同比），indicator **混着百分数、小数、倍数、元/股**四种，
+    且与报表有 2 个同名字段口径冲突。**不要当第四张报表同等对待。**
+
+    ## 关键约束
+
+    1. **必须携带登录态 Cookie**。缺 Cookie 时返回 HTTP 400 +
+       `error_code: "400016"`（实测）。实现须在已登录的 `https://xueqiu.com`
+       页面上下文内发起请求，由浏览器自动附带 Cookie 与 Origin。
+    2. **`error_code` 类型会漂移**：成功为 number `0`，失败为 string（如 `"400016"`）。
+       判定成功须归一化后比较，且不能只看 HTTP 状态码。
+    3. **鉴权失败时 `data.list` 同样为空数组**，必须先判 `error_code` 再判 list，
+       否则会把「未登录」误报成「无财务数据」。
+    4. **`timestamp` 是翻页游标，不是当前时间**，详见 `TimestampParam`。
+    5. **数值可能是科学计数法**（`3.0E8`），原始 JSON 中即如此。
+       标准 `JSON.parse` 安全，正则/字符串处理会挂。
+    6. 🔴 **`type=S0`–`S4`（单季口径）的语义正确性是 per-field 的，不是 per-endpoint 的**：
+
+       | 端点 | `S` 系列 |
+       | --- | --- |
+       | `income.json` | ⚠️ 未实测（HAR 未覆盖） |
+       | `balance.json` | ❌ 全部字段不可用（存量表，产出负的总资产） |
+       | `cash_flow.json` | ⚠️ 36 个流量字段正确，2 个余额字段失真 |
+       | `indicator.json` | ⚠️ HAR 未出现（比率差分无意义） |
+
+       实现须按**字段级白名单**处理，不可按端点粗粒度开关。
+    7. 🔴 **`indicator.json` 与报表的 2 个同名字段口径冲突**，跨表 join 会静默出错：
+
+       | 字段 | indicator | balance |
+       | --- | --- | --- |
+       | `asset_liab_ratio` | `65.9226`（百分数） | `0.659226148333026`（小数） |
+       | `capital_reserve` | `21.2576`（**每股**资本公积） | `37030444558.6`（资本公积**总额**） |
+
+    ### B 组专属约束
+
+    8. 🔴 **page/size 类端点的每页条数逐端点而异**（已逐一实测）：
+       `holders` 返回 `size + 1` 条（末条是下页首条），
+       `bonus` / `shareschg` / `skholderchg` 返回标准的 `size` 条。
+       故终止判据分别是 `length <= size` 与 `length < size` ——
+       **一刀切两个方向都会静默出错**（详见 `SizeParam`）。
+    9. 🔴 **分红金额无结构化字段**，只在 `plan_explain` 中文串里
+       （`10派69.57元(实施方案)`）。解析失败须返回 `null` 并保留原文，
+       **绝不填 0**；`(预案)` 等非「实施方案」状态不能计入已分红。
+    10. 🔴 **`org_holding` 的 `fund_items[0]` 是「全部合计」汇总行**，
+        不是一只基金 —— 投影时必须剥离。
+    11. ⚠️ **日期索引类端点不是翻页**（`top_holders` / `org_holding`）：
+        先取 `times[]` 再按 `value` 展开，用 `@Expanded` 而非 `@Paginated`。
+        两者参数名还不同（`locate` vs `timestamp`）。
+    12. ⚠️ **`top_holders.count` 不控制返回条数** —— 传 200 仍只返回 10 条。
+  version: 5.1.0
+
+servers:
+  - url: https://stock.xueqiu.com
+    description: 财务数据服务（唯一承载业务数据的域名）
+
+security:
+  - sessionCookie: []
+
+paths:
+  /v5/stock/finance/cn/income.json:
+    get:
+      operationId: getCnIncomeStatement
+      summary: 获取 A 股个股利润表
+      description: |
+        返回指定 A 股标的的利润表，按报告期倒序。
+
+        **口径为累计值**：每期数据是「年初至该报告期末」的累计数，
+        而非单季数。已验证（赛力斯 2025 年 `total_revenue`）：
+        一季报 191.47 亿 → 中报 624.02 亿 → 三季报 1105.34 亿 → 年报 1650.54 亿，单调递增。
+
+        **路径中的 `/cn/` 表明仅限 A 股**。港股/美股的同族端点未在抓包中出现，不要臆造路径。
+      tags: [财务数据]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/TypeParam'
+        - $ref: '#/components/parameters/IsDetailParam'
+        - $ref: '#/components/parameters/CountParam'
+        - $ref: '#/components/parameters/TimestampParam'
+      responses:
+        '200':
+          description: |
+            请求成功。⚠️ HTTP 200 **不等于**业务成功，仍须校验 `error_code`。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncomeResponse'
+              examples:
+                成功:
+                  summary: 赛力斯 SH601127，type=all
+                  value:
+                    data:
+                      quote_name: 赛力斯
+                      currency: CNY
+                      currency_name: 人民币
+                      org_type: 1
+                      last_report_name: 2026一季报
+                      statuses: null
+                      list:
+                        - report_date: 1774886400000
+                          report_name: 2026一季报
+                          ctime: 1777463147000
+                          total_revenue: [25745711786.75, 0.3446285931858831]
+                          operating_costs: [25864181222.45, 0.3917663047945134]
+                          op: [805558027.55, -0.09242907575178125]
+                          profit_total_amt: [848859149.04, -0.048119361700924596]
+                          net_profit: [610545316.93, -0.1756409396930466]
+                          net_profit_atsopc: [754464672.82, 0.008921162241436175]
+                          minority_gal: [-143919355.89, -19.091592985971158]
+                          basic_eps: [0.43, -0.14]
+                          exchg_gain: [null, null]
+                    error_code: 0
+                    error_description: ''
+        '400':
+          description: |
+            业务错误。实测触发条件：**缺少登录态 Cookie**。
+
+            ⚠️ 此响应仍带 `data.list: []`，不能凭 list 为空判定"无数据"。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncomeResponse'
+              examples:
+                未登录:
+                  summary: 无 Cookie 请求（curl 实测，已带齐 Origin/Referer/UA）
+                  value:
+                    data:
+                      list: []
+                    error_code: '400016'
+                    error_description: 遇到错误，请刷新页面或者重新登录帐号后再试
+
+  /v5/stock/finance/cn/balance.json:
+    get:
+      operationId: getCnBalanceSheet
+      summary: 获取 A 股个股资产负债表
+      description: |
+        返回指定 A 股标的的资产负债表，按报告期倒序。
+        **入参与 `income.json` 完全一致**。
+
+        ## 口径：时点存量，不可跨期相加
+
+        资产负债表是**时点存量表** —— 每期数据是该报告期末当日的**余额**，
+        不是期间累计发生额。这与利润表有根本区别：
+
+        | | `income.json` | `balance.json` |
+        | --- | --- | --- |
+        | 表类型 | 期间流量表 | **时点存量表** |
+        | `Q`/`all` 口径 | 年初至期末累计发生额 | 期末**时点余额** |
+        | 期间可加性 | ✅ 可加 | ❌ **不可加** |
+
+        ⚠️ 本表数值看起来也逐期递增（987→1129→1215→1439 亿），
+        容易误判为累计口径。区分依据是**表的性质**而非数值趋势 ——
+        2023 年就出现过中报总资产（370 亿）低于一季报（444 亿）的情况，
+        累计口径不可能下降。
+
+        ## 🔴 不要对本端点使用 `type=S0`–`S4`
+
+        `S` 系列是相邻期的**机械差分**。上游对全族端点套用了同一套差分逻辑，
+        未区分流量表/存量表。对存量表做差分得到的是「**期间变动额**」而非「余额」，
+        产出的数据在会计上是荒谬的：
+
+        | 实测证据 | 数值 | 问题 |
+        | --- | --- | --- |
+        | `S2`「2023二季度」`total_assets` | **−7,358,094,375.04** | **负的总资产** |
+        | `S0`「2025四季度」`asset_liab_ratio` | **−0.0545** | **负的资产负债率** |
+        | `S0`「2025四季度」`total_assets` | 22,399,968,216.45 | 实为「四季度总资产**增加** 224 亿」 |
+
+        **实现红线**：不应向用户暴露本端点的 `S` 系列，或必须极醒目地标注
+        「本组为相邻期差额（变动额），非时点余额；比率类字段无意义」。
+        让 Agent 拿到「总资产 −73.58 亿」而不加解释会直接产出错误结论 ——
+        这比返回空数据危险得多，**因为它看起来完全正常**。
+      tags: [财务数据]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/TypeParam'
+        - $ref: '#/components/parameters/IsDetailParam'
+        - $ref: '#/components/parameters/CountParam'
+        - $ref: '#/components/parameters/TimestampParam'
+      responses:
+        '200':
+          description: |
+            请求成功。⚠️ HTTP 200 **不等于**业务成功，仍须校验 `error_code`。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+              examples:
+                成功:
+                  summary: 赛力斯 SH601127，type=all（仅列核心汇总项）
+                  value:
+                    data:
+                      quote_name: 赛力斯
+                      currency: CNY
+                      currency_name: 人民币
+                      org_type: 1
+                      last_report_name: 2026一季报
+                      statuses: null
+                      list:
+                        - report_date: 1774886400000
+                          report_name: 2026一季报
+                          ctime: null
+                          total_assets: [123747865038.34, 0.25365492920462807]
+                          total_liab: [81577828433.66, 0.07573765488632628]
+                          total_holders_equity: [42170036604.68, 0.8434702341851736]
+                          total_quity_atsopc: [41310177392.59, 0.7863118590375621]
+                          minority_equity: [859859212.09, 4.4311316294194265]
+                          asset_liab_ratio: [0.659226148333026, -0.1419188567552478]
+                          shares: [1741985086, 0.06650009506809364]
+                          dividend_receivable: [3.0E8, null]
+                          lt_payable_sum: [0.0, null]
+                          fixed_asset: [null, null]
+                          fixed_asset_sum: [14355796175.65, 0.028196687820616344]
+                    error_code: 0
+                    error_description: ''
+                分页末页:
+                  summary: type=Q2 最后一页，返回 4 条 < count=5（上游截断而非报错）
+                  value:
+                    data:
+                      quote_name: 赛力斯
+                      last_report_name: 2026一季报
+                      list:
+                        - report_name: 2017中报
+                        - report_name: 2016中报
+                        - report_name: 2015中报
+                        - report_name: 2014中报
+                    error_code: 0
+                    error_description: ''
+        '400':
+          description: |
+            业务错误。实测触发条件：**缺少登录态 Cookie**。
+
+            ⚠️ 此响应仍带 `data.list: []`，不能凭 list 为空判定"无数据"。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+
+  /v5/stock/finance/cn/cash_flow.json:
+    get:
+      operationId: getCnCashFlow
+      summary: 获取 A 股个股现金流量表
+      description: |
+        返回指定 A 股标的的现金流量表，按报告期倒序。
+        **入参与 `income.json` / `balance.json` 完全一致**。
+
+        ## 口径：期间累计（与利润表同类）
+
+        `Q`/`all` 口径为「年初至该报告期末的累计发生额」。
+        已验证（赛力斯 2025 年 `ncf_from_oa`）：
+        一季报 −76.30 亿 → 中报 +144.37 亿 → 三季报 +226.49 亿 → 年报 +289.14 亿。
+
+        ⚠️ **本表累计值可以下降甚至为负**（经营现金流本身可正可负），
+        不能像利润表那样用「单调递增」来判定累计口径。
+
+        ## ✅ `S` 系列在本表基本可用（与资产负债表相反）
+
+        对**期间流量**做差分得到单季发生额是有意义的。已验算：
+
+        ```
+        S0「2025四季度」ncf_from_oa 6,264,296,304.74
+          = 2025年报 28,913,743,329.24 − 2025三季报 22,649,447,024.50  ✅ 精确吻合
+        ```
+
+        `S4`（四季度）= 年报 − 三季报，是**上市公司不单独披露的 Q4 单季数据**，
+        对季度环比分析很有价值。`S1` 与 `Q1` 数值完全相同（一季度无需差分）。
+
+        ## 🔴 但 2 个时点余额字段在 `S` 口径下失真
+
+        现金流量表**不是纯流量表**，混着 2 个时点余额字段：
+
+        | 字段 | `S` 口径下的表现 |
+        | --- | --- |
+        | `initial_balance_of_cce` | **恒变成 `0.0`**（Q2–Q4） |
+        | `final_balance_of_cce` | **退化成等于当季净增额** |
+
+        实测（`type=S0`，赛力斯）：
+
+        | 期次 | 期初 | 期末 | 净增 | 判定 |
+        | --- | --- | --- | --- | --- |
+        | 2026一季度 | 483.63 亿 | 221.49 亿 | −262.15 亿 | ✅ 正确（S1 无需差分） |
+        | 2025四季度 | **0.0** | 216.79 亿 | 216.79 亿 | ❌ 期末 == 净增 |
+        | 2025三季度 | **0.0** | 50.19 亿 | 50.19 亿 | ❌ 同上 |
+        | 2025二季度 | **0.0** | 118.46 亿 | 118.46 亿 | ❌ 同上 |
+        | 2025一季度 | 63.34 亿 | 98.19 亿 | 34.85 亿 | ✅ 正确（Q1 无需差分） |
+
+        对照 `all` 口径：2025 四季度末现金真实值为 **483.63 亿**，而非 216.79 亿。
+
+        **实现要求**：`type=S*` 时这 2 个字段必须置 `null` 并标注不可用。
+
+        > 🔴 **这比资产负债表的坑更隐蔽**：balance 的 `S` 系列会产出负的总资产，
+        > 一眼可识破；而这里失真后**仍是正的、量级合理的数字**，
+        > 从结果完全看不出错误 —— 但它把「期末余额」悄悄换成了「当季净增」。
+        > 这类错误必须在采集层拦掉，不能指望下游发现。
+      tags: [财务数据]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/TypeParam'
+        - $ref: '#/components/parameters/IsDetailParam'
+        - $ref: '#/components/parameters/CountParam'
+        - $ref: '#/components/parameters/TimestampParam'
+      responses:
+        '200':
+          description: |
+            请求成功。⚠️ HTTP 200 **不等于**业务成功，仍须校验 `error_code`。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CashFlowResponse'
+              examples:
+                成功:
+                  summary: 赛力斯 SH601127，type=all（仅列汇总项）
+                  value:
+                    data:
+                      quote_name: 赛力斯
+                      currency: CNY
+                      currency_name: 人民币
+                      org_type: 1
+                      last_report_name: 2026一季报
+                      statuses: null
+                      list:
+                        - report_date: 1774886400000
+                          report_name: 2026一季报
+                          ctime: null
+                          sub_total_of_ci_from_oa: [27732075659.51, null]
+                          sub_total_of_cos_from_oa: [48682370800.99, null]
+                          ncf_from_oa: [-20950295141.48, -1.745529702966212]
+                          ncf_from_ia: [-4352042841.04, null]
+                          ncf_from_fa: [-622559136.30, null]
+                          effect_of_exchange_chg_on_cce: [-289640112.54, -1789.2613168589469]
+                          net_increase_in_cce: [-26214537231.36, -8.522216005043523]
+                          initial_balance_of_cce: [48363264815.25, 6.635884897676052]
+                          final_balance_of_cce: [22148727583.89, 1.2557858344429862]
+                          cash_received_of_borrowing: [6.0E7, -0.9920074597042761]
+                    error_code: 0
+                    error_description: ''
+                S口径失真:
+                  summary: type=S0 第 2 条 —— 期初恒为 0、期末退化成净增（❌ 不可直接使用）
+                  value:
+                    data:
+                      quote_name: 赛力斯
+                      list:
+                        - report_name: 2025四季度
+                          ncf_from_oa: [6264296304.740002, null]
+                          initial_balance_of_cce: [0.0, null]
+                          final_balance_of_cce: [21678985881.74, null]
+                          net_increase_in_cce: [21678985881.739998, null]
+                    error_code: 0
+                    error_description: ''
+        '400':
+          description: |
+            业务错误。实测触发条件：**缺少登录态 Cookie**。
+
+            ⚠️ 此响应仍带 `data.list: []`，不能凭 list 为空判定"无数据"。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CashFlowResponse'
+
+  /v5/stock/finance/cn/indicator.json:
+    get:
+      operationId: getCnFinancialIndicator
+      summary: 获取 A 股个股主要财务指标
+      description: |
+        返回指定 A 股标的的主要财务指标（ROE、毛利率、周转率、每股指标等），
+        按报告期倒序。**入参与三张报表完全一致**。
+
+        ## 与三张报表的根本区别
+
+        前三个端点是**原始报表**（上游披露的科目原值），本端点是**衍生指标**
+        （由报表数据计算出的比率、每股值、周转率）。这带来三个特有陷阱：
+
+        ### 🔴 1. 单位在同一张表内不统一
+
+        报表可以「金额一律元、同比一律小数」一刀切，**本表不行**：
+
+        | 单位 | 字段示例 | 值 |
+        | --- | --- | --- |
+        | **百分数** | `asset_liab_ratio` | `65.9226` = 65.92% |
+        | **小数比率** | `ncf_from_oa_to_total_liab` | `-0.2568` = −25.68% |
+        | **倍/次** | `current_ratio` | `1.0687` 倍 |
+        | **天** | `cash_cycle` | `-130.9449` 天 |
+        | **元** | `total_revenue` | `25745711786.75` |
+        | **元/股** | `np_per_share` | `23.7144` |
+
+        前两行**在同一个报告期对象里**，一个百分数一个小数 ——
+        任何统一处理都会让一半字段错 100 倍。
+        实现须维护逐字段的单位表并在信封 `units` 中透出，**不做单位归一化**。
+
+        ### 🔴 2. 与 `balance.json` 有 2 个同名字段口径冲突
+
+        | 字段 | indicator | balance | 冲突 |
+        | --- | --- | --- | --- |
+        | `asset_liab_ratio` | `65.9226` | `0.659226148333026` | 单位差 100 倍 |
+        | `capital_reserve` | `21.2576` | `37030444558.6` | **语义完全不同** |
+
+        `capital_reserve` 已精确验证：balance 的资本公积总额 37,030,444,558.6
+        ÷ 股本 1,741,985,086 = 21.2576，即 indicator 给的是**每股**资本公积。
+
+        跨表 join 时若做 `{...balanceRow, ...indicatorRow}` 合并，
+        370 亿的真实值会被 21.2576 静默覆盖且**不报错**。
+
+        > 与 `income.json` 同名的 4 个字段（`total_revenue` / `net_profit_atsopc` /
+        > `net_profit_after_nrgal_atsolc` / `basic_eps`）则**数值完全一致**，join 安全。
+
+        ### ⚠️ 3. 三个字段名与实际语义不符
+
+        | 字段 | 望文生义 | 实际语义 |
+        | --- | --- | --- |
+        | `np_per_share` | 每股净**利润** | **每股净资产**（`np` = net property） |
+        | `holder_equity` | 股东权益**金额** | **权益比率**（权益 ÷ 总资产 × 100） |
+        | `capital_reserve` | 资本公积总额 | **每股**资本公积 |
+
+        `np_per_share` 尤其危险：赛力斯每股净资产 23.71 元、每股收益 0.43 元，
+        相差 55 倍，混淆会得出荒谬的估值结论。
+
+        ## 入参：HAR 中未出现 `S` 系列
+
+        本端点抓包只见 `all` / `Q1`–`Q4`，**没有 `S0`–`S4`**。
+        这符合逻辑——对比率做差分没有意义。
+
+        但**不能据此断定上游拒绝 `S` 系列**（未实测）。按形状校验放行，
+        若上游确实返回 `S` 数据，那些值大概率无意义。
+
+        ## 翻页：历史最深，且早期数据不完整
+
+        本 HAR 翻页链最长（一路到 2011 年，14 次请求）。末页返回 3 条 < `count=5`，
+        期次为 2013一季报 / 2012年报 / 2011年报 —— **中间期次有跳跃缺失**。
+
+        早期数据不完整是上游真实状态，**不是采集失败**。
+        回写时不要假设期次连续，也不要用「缺失=0」填补。
+      tags: [财务数据]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/TypeParam'
+        - $ref: '#/components/parameters/IsDetailParam'
+        - $ref: '#/components/parameters/CountParam'
+        - $ref: '#/components/parameters/TimestampParam'
+      responses:
+        '200':
+          description: |
+            请求成功。⚠️ HTTP 200 **不等于**业务成功，仍须校验 `error_code`。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndicatorResponse'
+              examples:
+                成功:
+                  summary: 赛力斯 SH601127，type=all（注意同一行内单位混合）
+                  value:
+                    data:
+                      quote_name: 赛力斯
+                      currency: CNY
+                      currency_name: 人民币
+                      org_type: 1
+                      last_report_name: 2026一季报
+                      statuses: null
+                      list:
+                        - report_date: 1774886400000
+                          report_name: 2026一季报
+                          ctime: 1777463147000
+                          avg_roe: [1.83, -0.6898305084745763]
+                          ore_dlt: [1.8263, -0.4352115289460663]
+                          gross_selling_rate: [26.2383, -0.04994279010486069]
+                          net_selling_rate: [2.3714, -0.3869341537188801]
+                          asset_liab_ratio: [65.9226, -0.1419188567552478]
+                          holder_equity: [34.0774, null]
+                          current_ratio: [1.0687, 0.2880559238278896]
+                          equity_multiplier: [2.9345, -0.31994623531320254]
+                          ncf_from_oa_to_total_liab: [-0.2568, -1.5526838966202783]
+                          np_per_share: [23.7144, 0.6749231910159975]
+                          capital_reserve: [21.2576, 0.5094511112689057]
+                          basic_eps: [0.43, -0.14]
+                          cash_cycle: [-130.9449, -0.13586990465087223]
+                          operating_cycle: [16.0659, -0.45030810446469205]
+                          operating_income_yoy: [34.4629, 2.2347027611878802]
+                          total_revenue: [25745711786.75, 0.3446285931858831]
+                          rop: [73.0061, -0.014710625795419777]
+                    error_code: 0
+                    error_description: ''
+                末页数据不连续:
+                  summary: timestamp=1364659200001 —— 返回 3 条 < count=5，且期次跳跃
+                  value:
+                    data:
+                      quote_name: 赛力斯
+                      list:
+                        - report_name: 2013一季报
+                        - report_name: 2012年报
+                        - report_name: 2011年报
+                    error_code: 0
+                    error_description: ''
+        '400':
+          description: |
+            业务错误。实测触发条件：**缺少登录态 Cookie**。
+
+            ⚠️ 此响应仍带 `data.list: []`，不能凭 list 为空判定"无数据"。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndicatorResponse'
+
+  # ══════════════════════════════════════════════════════════
+  # B 组 · 股权与公司运作（f10/cn/**）
+  # 信封 / 鉴权 / CORS / 导航目标与 A 组完全一致；
+  # 差异在翻页范式与 data 内部形态。
+  # ══════════════════════════════════════════════════════════
+
+  /v5/stock/f10/cn/bonus.json:
+    get:
+      operationId: getCnBonus
+      summary: 获取分红 / 增发 / 配股记录
+      description: |
+        ⚠️ **一个端点返回三块互不相干的数据** —— 这是「增发」HAR 中
+        没有独立端点的原因：
+
+        | `data` 字段 | 内容 | 本样本条数 |
+        | --- | --- | --- |
+        | `items` | **分红**（派息/送转） | 12（分 2 页） |
+        | `addtions` | **增发** | 2 |
+        | `allots` | **配股** | 0（结构未验证） |
+
+        ⚠️ **`page`/`size` 只对 `items` 生效** —— `addtions` / `allots`
+        每页原样重复返回（实测 page=1 与 page=2 的 `addtions` 完全相同）。
+
+        ⚠️ 本端点返回**标准的 `size` 条**（不像 `holders` 多返一条），
+        终止判据是 `length < size`。本样本共 12 条分红，分 2 页。
+
+        🔴 **分红金额没有结构化字段**，只在 `plan_explain` 中文串里
+        （如 `10派69.57元(实施方案)`），须解析，详见 `BonusItem.plan_explain`。
+
+        本端点填补了 §7.5 的 🔴 高严重度缺口「分红/股息记录」。
+        注意区分三个"假朋友"：`dividend_payable`（应付股利余额）、
+        `cash_paid_of_distribution`（混了利息支出）、
+        `dividend_receivable`（方向相反），**都不是分红额**。
+      tags: [股权与公司运作]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - $ref: '#/components/parameters/ExtendParam'
+      responses:
+        '200':
+          description: 请求成功。⚠️ 仍须校验 `error_code`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BonusResponse'
+              examples:
+                成功:
+                  summary: 宁德时代 SZ300750，page=1
+                  value:
+                    data:
+                      items:
+                        - dividend_year: 2025年报
+                          plan_explain: 10派69.57元(实施方案)
+                          equity_date: 1776700800000
+                          ex_dividend_date: 1776787200000
+                          ashare_ex_dividend_date: 1776787200000
+                          dividend_date: 1776787200000
+                          cancle_dividend_date: null
+                        - dividend_year: 2022年报
+                          plan_explain: 10转8股派25.2元(实施方案)
+                          equity_date: 1685980800000
+                          ex_dividend_date: 1686067200000
+                          ashare_ex_dividend_date: 1686067200000
+                          dividend_date: 1686067200000
+                          cancle_dividend_date: null
+                      addtions:
+                        - actual_issue_vol: 109756097.00000001
+                          actual_issue_price: 410.0
+                          actual_rc_net_amt: 44870113208
+                          listing_ad: 1656518400000
+                      allots: []
+                    error_code: 0
+                    error_description: ''
+
+  /v5/stock/f10/cn/top_holders.json:
+    get:
+      operationId: getCnTopHolders
+      summary: 获取十大股东 / 十大流通股东
+      description: |
+        ⚠️ **一个端点承载两种口径**，靠 `circula` 区分（`0`=全体、`1`=流通）
+        —— 这是两个 HAR 命中同一端点的原因。
+
+        ## 翻页范式：日期索引，不是翻页
+
+        首次请求（不带 `locate`）返回 `data.times[]` 列出全部可用报告期；
+        取历史期按 `times[].value` 传 `locate`/`start` **逐个展开请求**。
+
+        实现用 **`@Expanded`**（source 为 `times[]`）而非 `@Paginated`
+        —— 这是「入参驱动、要几期发几次」的形态（CLAUDE.md §2.5）。
+
+        ⚠️ **`count` 不控制返回条数**：实测传 `count=200` 仍只返回 10 条，
+        上游固定返回前十大。不要以为调大能拿到更多股东。
+
+        ⚠️ 两种 `circula` 口径的可用期数不同（实测 48 vs 36），
+        不能用一种口径的 `times` 去展开另一种。
+
+        本端点填补了 §7.5 的 🔴 高严重度缺口「股东结构」。
+      tags: [股权与公司运作]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/CirculaParam'
+        - $ref: '#/components/parameters/LocateParam'
+        - $ref: '#/components/parameters/StartParam'
+        - name: count
+          in: query
+          required: false
+          description: |
+            ⚠️ **不控制返回条数** —— 实测 `count=200` 仍只返回 10 条。
+            抓包中首次请求传 200，取历史期时不传。
+          schema:
+            type: integer
+            example: 200
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopHoldersResponse'
+              examples:
+                十大股东:
+                  summary: SZ300750，circula=0（仅列前 3 与合计）
+                  value:
+                    data:
+                      items:
+                        - holder_name: 厦门瑞庭投资有限公司
+                          held_num: 1019704949
+                          held_ratio: 22.04
+                          chg: 0.0
+                        - holder_name: 香港中央结算有限公司
+                          held_num: 874449206
+                          held_ratio: 18.9
+                          chg: -0.79
+                        - holder_name: 中国工商银行股份有限公司-易方达创业板交易型开放式指数证券投资基金
+                          held_num: 28619389
+                          held_ratio: 0.62
+                          chg: 14.0
+                      total:
+                        held_num: 3066053502
+                        held_ratio: 66.28
+                        chg: -0.11
+                      quit: []
+                      times:
+                        - name: '2026-08-05'
+                          value: 1785859200000
+                        - name: 2026中报
+                          value: 1782748800000
+                    error_code: 0
+                    error_description: ''
+                含退出股东:
+                  summary: 历史期中 quit 非空 —— 注意多出的 holder_rank 字段
+                  value:
+                    data:
+                      items: []
+                      quit:
+                        - holder_name: 中国工商银行股份有限公司-华泰柏瑞沪深300交易型开放式指数证券投资基金
+                          held_num: 43712032
+                          held_ratio: 0.96
+                          holder_rank: 8
+                    error_code: 0
+                    error_description: ''
+
+  /v5/stock/f10/cn/holders.json:
+    get:
+      operationId: getCnHoldersNum
+      summary: 获取股东人数与筹码结构
+      description: |
+        筹码集中度分析的核心数据源。
+
+        🔴 **本端点是四个 page/size 端点中唯一多返一条的**：`size=10` 实测
+        每页返回 **11 条**，末条是下一页的第一条（page=1 末条与 page=2 首条的
+        `timestamp` 完全相同）。
+
+        故本端点终止判据用 `length <= size`（其余三个用 `length < size`），
+        跨页合并按 `timestamp` 去重。**不要把此行为外推到其它端点** ——
+        详见 `SizeParam`。
+
+        ## 分析价值
+
+        | 信号 | 含义 |
+        | --- | --- |
+        | `holder_num` ↑ + `per_float` ↓ | 筹码分散（散户增多） |
+        | `holder_num` ↓ + `per_float` ↑ | 筹码集中（通常视为积极信号） |
+        | `top_holder_ratio` 持续 ↓ | 大股东减持或股权稀释 |
+
+        本样本 2026 中报：户数 +32.04%、户均持股 −23.14% —— 典型筹码分散。
+      tags: [股权与公司运作]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - $ref: '#/components/parameters/ExtendParam'
+      responses:
+        '200':
+          description: |
+            请求成功。⚠️ 实际返回 `size + 1` 条，末条是下页首条。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoldersNumResponse'
+              examples:
+                成功:
+                  summary: SZ300750，page=1（仅列首条）
+                  value:
+                    data:
+                      items:
+                        - timestamp: 1782748800000
+                          holder_num: 270033
+                          ashare_holder: 269979
+                          hshare_holder: 54
+                          bshare_holder: null
+                          chg: 32.04
+                          per_float: 16584.555446926857
+                          per_float_chg: -23.14
+                          per_amount: 6517896.136196724
+                          price: 393.01
+                          top_holder_ratio: 66.53
+                          top_float_holder_ratio: 63.3138
+                    error_code: 0
+                    error_description: ''
+
+  /v5/stock/f10/cn/org_holding/detail.json:
+    get:
+      operationId: getCnOrgHolding
+      summary: 获取基金持股明细
+      description: |
+        机构持仓分析的数据源。本样本单期返回 **2160 条**基金明细。
+
+        ## 翻页范式：日期索引（同 `top_holders`）
+
+        首次请求返回 `data.times[]`（本样本 33 期），取历史期按
+        `times[].value` 传 `timestamp` 展开 —— 用 `@Expanded`。
+
+        ⚠️ **参数名与 `top_holders` 不同**：这里叫 `timestamp`，
+        那里叫 `locate`。语义相同但不可互换。
+
+        ## 两个易错点
+
+        🔴 业务数据在 **`fund_items`** 而非 `items`（与本组其它端点不一致）。
+
+        🔴 **首条是「全部合计」汇总行，不是一只基金** ——
+        已验证合计行 `held_num` 与 2159 条明细之和精确吻合（差额 0）。
+        投影时必须剥离，否则「持仓基金数量」多算 1、
+        「最大持仓基金」永远是那条汇总行。
+      tags: [股权与公司运作]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/OrgTimestampParam'
+        - $ref: '#/components/parameters/ExtendParam'
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgHoldingResponse'
+              examples:
+                成功:
+                  summary: SZ300750 最新期（仅列汇总行与首只基金）
+                  value:
+                    data:
+                      timestamp: 1782748800000
+                      chg_date: 2026中报
+                      times:
+                        - name: 2026中报
+                          value: 1782748800000
+                        - name: 2026一季报
+                          value: 1774886400000
+                      fund_items:
+                        - org_name_or_fund_name: 全部合计
+                          held_num: 294063712
+                          to_float_shares_ratio: 6.9
+                        - org_name_or_fund_name: 易方达创业板交易型开放式指数证券投资基金
+                          held_num: 16165525
+                          to_float_shares_ratio: 0.3795
+                    error_code: 0
+                    error_description: ''
+
+  /v5/stock/f10/cn/shareschg.json:
+    get:
+      operationId: getCnSharesChg
+      summary: 获取限售解禁记录
+      description: |
+        解禁压力分析的数据源。
+
+        ⚠️ **同一解禁日会有多条记录**（本样本 10 条中有 5 条
+        `floatable_time` 相同，分属不同股东）—— 这是同一批解禁按股东拆分。
+        算「某日解禁总量」必须按 `floatable_time` **分组求和**，不能取单条。
+        这也意味着分页边界可能把同一批解禁劈开，须跨页合并后再聚合。
+
+        ⚠️ 端点名是 `shareschg`（股本变动）而非 `restricts`，
+        **强烈暗示还有其它 `type` 取值**，但本次抓包只覆盖 `restricts`。
+      tags: [股权与公司运作]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/SharesChgTypeParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - $ref: '#/components/parameters/ExtendParam'
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharesChgResponse'
+              examples:
+                成功:
+                  summary: SZ300750，type=restricts（同一解禁日多条）
+                  value:
+                    data:
+                      items:
+                        - holder_name: 香港上海汇丰银行有限公司
+                          floatable_time: 1672761600000
+                          floatable_shares_num: 3419511.9999999995
+                          float_shares_type: 定向增发机构配售股份
+                        - holder_name: HHLR管理有限公司-HHLR中国基金
+                          floatable_time: 1672761600000
+                          floatable_shares_num: 7317073.0
+                          float_shares_type: 定向增发机构配售股份
+                    error_code: 0
+                    error_description: ''
+
+  /v5/stock/f10/cn/skholderchg.json:
+    get:
+      operationId: getCnSkHolderChg
+      summary: 获取高管（及关联人）增减持记录
+      description: |
+        管理层行为分析的数据源。
+
+        🔴 **`chg_shares_num` 负数 = 减持，正数 = 增持**。
+        `daily_shares_balance_otd` 是**变动后**余额，余额链已验证
+        （5/6 精确吻合，详见 `SkHolderChgItem`）。
+
+        ## 分析价值与纪律
+
+        | 用途 | 说明 |
+        | --- | --- |
+        | 管理层信心 | 持续减持是负面信号；增持通常为正面 |
+        | 减持成本参考 | `trans_avg_price` 可与当期股价对比 |
+        | 套现规模 | `chg_shares_num` × `trans_avg_price` ≈ 套现金额 |
+
+        ⚠️ **不要仅凭减持下结论** —— 可能出于个人资金需求、股权激励行权、
+        大宗减持计划等多种原因。回写时应作**事实陈述**，不作投资判断。
+      tags: [股权与公司运作]
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - $ref: '#/components/parameters/ExtendParam'
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkHolderChgResponse'
+              examples:
+                成功:
+                  summary: SZ300750（减持记录，注意负号）
+                  value:
+                    data:
+                      items:
+                        - symbol: SZ300750
+                          name: 宁德时代
+                          share_changer_name: 黄世霖
+                          manage_name: 黄世霖
+                          rr_of_chgr_and_manage: 本人
+                          duty: 董事、高管
+                          chg_date: 1654012800000
+                          chg_shares_num: -311500
+                          trans_avg_price: 408.0
+                          daily_shares_balance_otd: 258900700
+                    error_code: 0
+                    error_description: ''
+
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: xq_a_token
+      description: |
+        雪球登录态 Cookie。**必需** —— 缺失时返回 `400016`。
+
+        Chrome 导出的 HAR 会脱敏 `cookie` 请求头，故抓包中不可见；
+        但响应头 `access-control-allow-credentials: true` 与
+        `access-control-allow-origin: https://xueqiu.com`（回显具体 Origin 而非 `*`）
+        共同证明这是带凭据的跨域请求。
+
+        具体 Cookie 名称未从抓包直接确认（`xq_a_token` 为雪球站点惯例），
+        实现上无需关心——应在已登录的浏览器页面上下文内发请求，由浏览器自动附带，
+        **不得把 Cookie 提取到 Node 层**。
+
+  parameters:
+    SymbolParam:
+      name: symbol
+      in: query
+      required: true
+      description: |
+        标的代码，格式为 `{交易所前缀}{6位数字}`。
+        已验证前缀：`SH`（上交所，A 组样本 SH601127）、`SZ`（深交所，B 组样本 SZ300750）。
+        `BJ` 按站点惯例推定，未在抓包中验证。
+
+        实现建议只做形状校验（防注入），不做代码白名单——上游标的集合是开放的。
+      schema:
+        type: string
+        pattern: '^[A-Z]{2}\d{6}$'
+        example: SH601127
+    TypeParam:
+      name: type
+      in: query
+      required: true
+      description: |
+        报告期筛选。**这是上游定义的枚举，实现时只做形状校验、不做白名单拦截**
+        （可能存在下表未列出的取值）。
+
+        ### 定期报告口径（`report_name` 措辞为「…季**报**」）
+
+        | 取值 | 语义 | 实测返回 |
+        | --- | --- | --- |
+        | `all` | 全部期次倒序 | 2026Q1 / 2025年报 / 2025Q3 / 2025中报 / 2025Q1 |
+        | `Q1` | 仅一季报 | 2026Q1 / 2025Q1 / 2024Q1 / … |
+        | `Q2` | **仅中报**（非"第二季度"） | 2025中报 / 2024中报 / … |
+        | `Q3` | 仅三季报 | 2025三季报 / 2024三季报 / … |
+        | `Q4` | **仅年报**（非"第四季度"） | 2025年报 / 2024年报 / … |
+
+        ⚠️ `Q2` / `Q4` 命名有误导性：指的是累计到该季末的定期报告（中报/年报），
+        不是单季数据。
+
+        ### 单季口径（`report_name` 措辞为「…季**度**」）
+
+        | 取值 | 语义 |
+        | --- | --- |
+        | `S0` | 全部期次的**单季**值，倒序 |
+        | `S1` – `S4` | 仅第 N 季度的**单季**值 |
+
+        `S` 系列 = 相邻期累计值的**机械差分**（已验算：S0「2025四季度」总资产
+        224.00 亿 = 2025年报 1439.06 亿 − 2025三季报 1215.06 亿，精确吻合）。
+        `S1` 因无需差分，数值与 `Q1` 完全相同，仅措辞不同。
+
+        🔴 **`S` 系列只对期间流量表（利润表、现金流量表）有意义**。
+        用在资产负债表这类**时点存量表**上会产出荒谬数据 —— 详见
+        `getCnBalanceSheet` 的说明。
+
+        > ⚠️ **`S` 系列仅在资产负债表 HAR 中出现**。`income.json` 是否支持尚未实测
+        > （两端点入参一致，很可能支持）。这正是"抓包样本 ≠ 全集"的实例，
+        > **再次强调不要对本参数做白名单拦截**。
+      schema:
+        type: string
+        example: all
+    IsDetailParam:
+      name: is_detail
+      in: query
+      required: true
+      description: |
+        是否返回明细科目。抓包中恒为 `true`。
+        取 `false` 时是否精简字段集**未验证**。
+      schema:
+        type: boolean
+        default: true
+        example: true
+    CountParam:
+      name: count
+      in: query
+      required: true
+      description: |
+        单次返回的报告期数。抓包中恒为 `5`，**上限未验证**。
+
+        同时是分页终止判据：返回的 `data.list` 长度 < `count` 即表示已到最早一期。
+      schema:
+        type: integer
+        minimum: 1
+        example: 5
+    TimestampParam:
+      name: timestamp
+      in: query
+      required: false
+      description: |
+        **翻页游标（毫秒时间戳），不是防缓存参数**。
+
+        语义为「返回 `report_date <= timestamp` 的记录」。
+
+        **首页**：传当前毫秒时间戳，或**传空串**——两者返回完全一致（抓包已验证，
+        `timestamp=1786022292643` 与 `timestamp=` 的响应体大小同为 11493 字节）。
+
+        **续取**：传「上一页最后一条的 `report_date` + 1」。
+        `+1` 是必要的——比较为闭区间，直接传 `report_date` 会重复返回该条。
+
+        实测游标链（`type=all`, `count=5`）：
+
+        | 请求 timestamp | 返回期次 | 末条 report_date |
+        | --- | --- | --- |
+        | 1786022292643（当前时间） | 2026Q1…2025Q1 | 1743350400000 |
+        | 1743350400001 | 2025Q1…2024Q1 | 1711814400000 |
+        | 1711814400001 | 2024Q1…2023Q1 | 1680192000000 |
+        | 1680192000001 | 2023Q1…2022Q1 | 1648656000000 |
+
+        ⚠️ 上游**不返回** `has_more` / `total`，终止只能靠 `list.length < count`。
+      schema:
+        oneOf:
+          - type: integer
+            format: int64
+          - type: string
+            enum: ['']
+        example: 1743350400001
+
+    # ── B 组 · f10 端点专用参数 ──────────────────────────────
+    PageParam:
+      name: page
+      in: query
+      required: true
+      description: |
+        页码，从 1 开始。
+
+        ⚠️ 终止判据见 `SizeParam` —— **不能用 `length < size`**。
+      schema:
+        type: integer
+        minimum: 1
+        example: 1
+    SizeParam:
+      name: size
+      in: query
+      required: true
+      description: |
+        每页条数，抓包中恒为 `10`。
+
+        🔴 **每页实际条数逐端点而异，终止判据不能一刀切**（已逐一实测）：
+
+        | 端点 | size=10 时每页返回 | 到底判据 |
+        | --- | --- | --- |
+        | `holders` | **11 条**（多返一条作下页预览） | `length <= size` |
+        | `bonus` / `shareschg` / `skholderchg` | 10 条（标准） | `length < size` |
+
+        两个方向都会出错且**都不报错**：
+        - 对 `holders` 用 `length < size` → 永远不成立（11 > 10），一直翻到上游返空；
+        - 对其余端点用 `length <= size` → **第一页就误判到底**（10 <= 10），数据全丢。
+
+        后者是实现时踩过的真实坑（`bonus` 只拿到 10 条而真实有 12 条）。
+
+        另：`holders` 的边界会重复一条，跨页合并须按业务主键去重
+        （`holders` 用 `timestamp`，其余端点见各自 schema）。
+      schema:
+        type: integer
+        minimum: 1
+        example: 10
+    ExtendParam:
+      name: extend
+      in: query
+      required: false
+      description: 抓包中恒为 `true`，语义未验证（取 `false` 时的差异未知）
+      schema:
+        type: boolean
+        example: true
+    CirculaParam:
+      name: circula
+      in: query
+      required: true
+      description: |
+        **股东口径开关** —— 这是「十大股东」与「十大流通股东」
+        命中同一端点的原因。
+
+        | 取值 | 口径 |
+        | --- | --- |
+        | `0` | 十大股东（全体股东） |
+        | `1` | 十大**流通**股东 |
+
+        ⚠️ 两种口径的可用报告期数不同（实测 `circula=0` 有 48 期、
+        `circula=1` 有 36 期），不能用一种口径的 `times[]` 去展开另一种。
+      schema:
+        type: integer
+        enum: [0, 1]
+        example: 0
+    LocateParam:
+      name: locate
+      in: query
+      required: false
+      description: |
+        报告期时间戳（毫秒）。不传则返回最新期。
+
+        取值**必须来自同一 `circula` 口径下首次请求返回的 `times[].value`**，
+        不要自行构造时间戳。
+
+        ⚠️ 这不是翻页游标，而是**日期索引** —— 取多期是按 `times[]`
+        逐个展开请求（`@Expanded`），不是顺序翻页（`@Paginated`）。
+      schema:
+        type: integer
+        format: int64
+        example: 1782748800000
+    StartParam:
+      name: start
+      in: query
+      required: false
+      description: |
+        抓包中**恒与 `locate` 同值**，独立语义未验证。
+        实现时跟随 `locate` 一起传同一个值。
+      schema:
+        type: integer
+        format: int64
+        example: 1782748800000
+    OrgTimestampParam:
+      name: timestamp
+      in: query
+      required: false
+      description: |
+        报告期时间戳（毫秒），取值来自 `times[].value`。不传则返回最新期。
+
+        ⚠️ 与 `top_holders.json` 的同语义参数**名称不同**（那里叫 `locate`），
+        两者不可互换。同样是日期索引而非翻页游标。
+      schema:
+        type: integer
+        format: int64
+        example: 1782748800000
+    SharesChgTypeParam:
+      name: type
+      in: query
+      required: true
+      description: |
+        股本变动类型。抓包中恒为 `restricts`（限售解禁）。
+
+        ⚠️ 端点名是 `shareschg`（股本变动）而非 `restricts`，**强烈暗示
+        还有其它取值**（如股本变动、回购），但本次抓包未覆盖。
+
+        这是**上游定义的枚举**，按 CLAUDE.md §3.6 只做形状校验、
+        不做白名单拦截。
+      schema:
+        type: string
+        example: restricts
+
+
+  schemas:
+    FinanceEnvelopeBase:
+      type: object
+      description: |
+        `stock.xueqiu.com/v5/stock/finance/cn/**` **全族共用**的响应信封外层。
+        各端点通过 `allOf` 组合本 schema 并收窄 `data.list` 的元素类型。
+      required: [data, error_code]
+      properties:
+        error_code:
+          description: |
+            ⚠️ **类型会漂移**：成功时为 number `0`，失败时为 string（如 `"400016"`）。
+            判定须归一化：`Number(error_code) === 0`。
+          oneOf:
+            - type: integer
+            - type: string
+          examples: [0, '400016']
+        error_description:
+          type: string
+          description: 错误描述，成功时为空串
+          example: ''
+
+    FinanceDataBase:
+      type: object
+      description: |
+        `data` 的**共用外层字段**（两端点已验证完全一致的 6 个元数据字段）。
+        各端点用 `allOf` 组合本 schema 并追加自己的 `list`。
+
+        ⚠️ 鉴权失败时本对象**只有 `list: []`**，其余字段全部缺失。
+      properties:
+        quote_name:
+          type: [string, 'null']
+          description: 标的名称
+          example: 赛力斯
+        currency:
+          type: [string, 'null']
+          description: 币种代码。决定 `list[]` 中金额字段的货币单位
+          example: CNY
+        currency_name:
+          type: [string, 'null']
+          description: 币种中文名
+          example: 人民币
+        org_type:
+          type: [integer, 'null']
+          description: |
+            机构类型。本次样本仅见 `1`（一般工商企业）。
+
+            ⚠️ 银行/保险/券商的报表科目与工商企业**完全不同**
+            （如银行有"利息净收入"而无"营业成本"；资产负债表差异更大——
+            银行有"吸收存款""发放贷款"等专属科目）。
+            其他 `org_type` 对应的字段集**未验证**，实现时不可假设字段集恒定。
+          example: 1
+        last_report_name:
+          type: [string, 'null']
+          description: 最新一期报告名称
+          example: 2026一季报
+        statuses:
+          description: 两端点抓包全程均为 `null`，语义未知
+          type: ['null', object, array]
+
+    IncomeResponse:
+      allOf:
+        - $ref: '#/components/schemas/FinanceEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/IncomeData'
+
+    IncomeData:
+      allOf:
+        - $ref: '#/components/schemas/FinanceDataBase'
+        - type: object
+          properties:
+            list:
+              type: array
+              description: 报告期数组，按 `report_date` **倒序**
+              items:
+                $ref: '#/components/schemas/IncomePeriod'
+
+    BalanceResponse:
+      allOf:
+        - $ref: '#/components/schemas/FinanceEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/BalanceData'
+
+    BalanceData:
+      allOf:
+        - $ref: '#/components/schemas/FinanceDataBase'
+        - type: object
+          properties:
+            list:
+              type: array
+              description: 报告期数组，按 `report_date` **倒序**
+              items:
+                $ref: '#/components/schemas/BalancePeriod'
+
+    CashFlowResponse:
+      allOf:
+        - $ref: '#/components/schemas/FinanceEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/CashFlowData'
+
+    CashFlowData:
+      allOf:
+        - $ref: '#/components/schemas/FinanceDataBase'
+        - type: object
+          properties:
+            list:
+              type: array
+              description: 报告期数组，按 `report_date` **倒序**
+              items:
+                $ref: '#/components/schemas/CashFlowPeriod'
+
+    IndicatorResponse:
+      allOf:
+        - $ref: '#/components/schemas/FinanceEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/IndicatorData'
+
+    IndicatorData:
+      allOf:
+        - $ref: '#/components/schemas/FinanceDataBase'
+        - type: object
+          properties:
+            list:
+              type: array
+              description: 报告期数组，按 `report_date` **倒序**
+              items:
+                $ref: '#/components/schemas/IndicatorPeriod'
+
+    ValueWithYoY:
+      type: array
+      description: |
+        **`[本期值, 同比增长率]` 二元组**，长度恒为 2（已用 jq 校验全部 40 个字段）。
+
+        | 位置 | 含义 | 单位 |
+        | --- | --- | --- |
+        | `[0]` | 本期值（累计口径） | 元；`*_eps` 字段为**元/股** |
+        | `[1]` | 同比增长率 | **小数**，`0.3446` 表示 +34.46% |
+
+        ⚠️ `[1]` 是小数比率而非百分数，回写给用户前需 ×100。
+        投影层应原样透传并在 `meta.semantics` / `units` 中声明口径，不做二次换算。
+
+        ⚠️ `[null, null]` 表示**该科目本期不适用或未披露**，
+        必须映射为 `null`，**不得填 0**。
+
+        验证：赛力斯 2026Q1 营收 257.46 亿 vs 2025Q1 营收 191.47 亿，
+        `(257.46-191.47)/191.47 = 0.3446` 与 `[1]` 完全吻合。
+      minItems: 2
+      maxItems: 2
+      items:
+        type: [number, 'null']
+      example: [25745711786.75, 0.3446285931858831]
+
+    IncomePeriod:
+      type: object
+      description: |
+        单个报告期的利润表数据。
+
+        除 `report_date` / `report_name` / `ctime` 三个标量外，
+        **其余 40 个字段全部是 `ValueWithYoY` 二元组**。
+
+        字段中文名的说明：表头映射表不在本次抓包的前端资源中，
+        以下中文名依据勾稽关系验算与会计准则推定。
+        标注「勾稽验证」的项已用赛力斯 2026Q1 实数验算通过（见 README §4.4）。
+      properties:
+        # ── 标量字段 ──────────────────────────────────────────
+        report_date:
+          type: integer
+          format: int64
+          description: |
+            报告期末日期，**毫秒**时间戳，恒为该期最后一日 00:00:00 **东八区**
+            （`1774886400000` → 2026-03-31 00:00:00 CST）。
+
+            同时是翻页游标的来源：下一页传 `report_date + 1`。
+          example: 1774886400000
+        report_name:
+          type: string
+          description: 报告期名称
+          example: 2026一季报
+        ctime:
+          type: integer
+          format: int64
+          description: 该条数据入库时间（毫秒），约等于公告披露后的落库时刻
+          example: 1777463147000
+
+        # ── 营业总收入 / 成本 ─────────────────────────────────
+        total_revenue:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 营业总收入（勾稽验证）。本样本与 `revenue` 完全相等
+        revenue:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            营业收入（勾稽验证）。工商企业中与 `total_revenue` 相等，
+            但金融企业会分离，**不可假设恒等**
+        operating_costs:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            营业**总**成本（勾稽验证）。
+            ⚠️ 与 `operating_cost` 只差一个 `s`，极易混淆
+        operating_cost:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            营业成本（勾稽验证）。
+            ⚠️ 与 `operating_costs` 只差一个 `s`，极易混淆
+        operating_taxes_and_surcharge:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 税金及附加（勾稽验证）
+        sales_fee:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 销售费用（勾稽验证）
+        manage_fee:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 管理费用（勾稽验证）
+        rad_cost:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 研发费用（勾稽验证）。rad = R&D
+        financing_expenses:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 财务费用（勾稽验证）
+        finance_cost_interest_fee:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 财务费用—利息费用（推定）
+        finance_cost_interest_income:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 财务费用—利息收入（推定）
+
+        # ── 营业利润构成 ──────────────────────────────────────
+        other_income:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 其他收益（勾稽验证）
+        invest_income:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 投资收益（勾稽验证）
+        invest_incomes_from_rr:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 对联营/合营企业的投资收益（推定）。rr = related relation
+        income_from_chg_in_fv:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 公允价值变动收益（勾稽验证）。fv = fair value
+        credit_impairment_loss:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            信用减值损失（勾稽验证）。
+
+            ⚠️ **本字段为负值**（本样本 -352 万），而 `asset_impairment_loss` 为正值
+            —— 上游两者符号约定相反。计算营业利润时前者直接相加、后者须减去。
+            **投影层不要"顺手统一符号"**，那会静默改变数据含义。
+        asset_impairment_loss:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            资产减值损失（勾稽验证）。本样本为**正值**，
+            勾稽营业利润时须**减去**。符号约定与 `credit_impairment_loss` 相反
+        asset_disposal_income:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 资产处置收益（勾稽验证）
+        exchg_gain:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 汇兑收益（推定）。本样本全部为 `[null, null]`
+        op:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **营业利润**（勾稽验证）。op = operating profit。
+
+            勾稽：`total_revenue - operating_costs + other_income + invest_income
+            + income_from_chg_in_fv + credit_impairment_loss - asset_impairment_loss
+            + asset_disposal_income` ≈ `op`（本样本差 0.9%，为未单列科目）
+
+        # ── 利润总额 / 净利润 ─────────────────────────────────
+        non_operating_income:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 营业外收入（勾稽验证）
+        non_operating_payout:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 营业外支出（勾稽验证）
+        noncurrent_assets_dispose_gain:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 非流动资产处置利得（推定）
+        noncurrent_asset_disposal_loss:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 非流动资产处置损失（推定）
+        profit_total_amt:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **利润总额**（勾稽验证，完全吻合）。
+
+            勾稽：`op + non_operating_income - non_operating_payout == profit_total_amt`
+        income_tax_expenses:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 所得税费用（勾稽验证）
+        net_profit:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **净利润**（勾稽验证，完全吻合），**含少数股东损益**。
+
+            勾稽：`profit_total_amt - income_tax_expenses == net_profit`
+
+            ⚠️ 与 `net_profit_atsopc`（归母净利润）是**不同概念**，回写时不可混用
+        continous_operating_np:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            持续经营净利润（勾稽验证）。本样本 == `net_profit`
+            （因 `net_profit_bi` 全为 null，即无终止经营业务）
+        net_profit_bi:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 终止经营净利润（推定）。本样本全为 `[null, null]`
+        net_profit_atsopc:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **归属于母公司股东的净利润**（勾稽验证，完全吻合）。
+            atsopc = attributable to shareholders of parent company。
+
+            勾稽：`net_profit_atsopc + minority_gal == net_profit`
+
+            ⚠️ 本样本中 `minority_gal` 为负，导致**归母净利润（7.54 亿）高于
+            合并净利润（6.11 亿）**。回写时必须明确区分二者，否则数字张冠李戴
+        minority_gal:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            少数股东损益（勾稽验证）。gal = gain and loss。
+            **可为负**（本样本 -1.44 亿，即少数股东承担亏损）
+        net_profit_after_nrgal_atsolc:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            归属于母公司股东的**扣非**净利润（勾稽验证）。
+            nrgal = non-recurring gain and loss（非经常性损益）
+
+        # ── 每股收益 ──────────────────────────────────────────
+        basic_eps:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            基本每股收益。
+
+            ⚠️ **单位是元/股**（如 `0.43`），与其余金额字段（元）不同。
+            投影层做「万/亿」分档格式化时**必须排除本字段**
+        dlt_earnings_per_share:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            稀释每股收益。
+
+            ⚠️ **单位是元/股**，同 `basic_eps`，格式化时须排除
+
+        # ── 综合收益 ──────────────────────────────────────────
+        othr_compre_income:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 其他综合收益
+        othr_compre_income_atoopc:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 归属于母公司的其他综合收益（推定）
+        othr_compre_income_atms:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 归属于少数股东的其他综合收益（推定）。atms = attributable to minority shareholders
+        total_compre_income:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 综合收益总额
+        total_compre_income_atsopc:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 归属于母公司的综合收益总额（推定）
+        total_compre_income_atms:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: 归属于少数股东的综合收益总额（推定）
+
+    BalancePeriod:
+      type: object
+      description: |
+        单个报告期的资产负债表数据。
+
+        **口径为时点余额**（该报告期末当日的余额），**不可跨期相加**。
+
+        共 90 个字段：`report_date` / `report_name` / `ctime` 三个标量 +
+        **87 个 `ValueWithYoY` 二元组**。
+
+        字段中文名的说明：表头映射表不在本次抓包的前端资源中，
+        以下中文名依据勾稽关系验算与会计准则推定。
+        标注「勾稽验证」的项已用赛力斯 2026Q1 实数验算通过（见 README §4.5.1）。
+      properties:
+        # ── 标量字段 ──────────────────────────────────────────
+        report_date:
+          type: integer
+          format: int64
+          description: |
+            报告期末日期，**毫秒**时间戳，恒为该期最后一日 00:00:00 **东八区**。
+            同时是翻页游标的来源：下一页传 `report_date + 1`。
+          example: 1774886400000
+        report_name:
+          type: string
+          description: |
+            报告期名称。
+
+            ⚠️ **措辞区分口径**：`type=all/Q*` 时为「2026一季**报**」（定期报告，时点余额），
+            `type=S*` 时为「2026一季**度**」（单季差分，**对本表语义错误**）。
+            唯一的文本差异是「报」vs「度」，极易看漏。
+          example: 2026一季报
+        ctime:
+          type: ['null', integer]
+          format: int64
+          description: |
+            数据入库时间（毫秒）。
+
+            ⚠️ **本端点抓包中恒为 `null`**，而 `income.json` 的同名字段有值
+            （如 `1777463147000`）。同名字段跨端点行为不同，不要假设一致。
+          example: null
+
+        # ── 核心汇总项（五组勾稽全部验证通过） ─────────────────────────────────
+        total_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            资产总计（勾稽验证）
+        total_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            负债合计（勾稽验证）
+        total_holders_equity:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            所有者权益合计，**含少数股东权益**（勾稽验证）
+        total_liab_and_holders_equity:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            负债和所有者权益总计（勾稽验证，恒等于 `total_assets`）
+        total_current_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            流动资产合计（勾稽验证）
+        total_noncurrent_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            非流动资产合计（勾稽验证）
+        total_current_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            流动负债合计（勾稽验证）
+        total_noncurrent_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            非流动负债合计（勾稽验证）
+        total_quity_atsopc:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            归属于母公司股东权益合计（勾稽验证）。
+            ⚠️ 上游拼写 `quity` 缺 e，**原样保留**，改对了会取不到值
+        minority_equity:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            少数股东权益（勾稽验证）
+        asset_liab_ratio:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            资产负债率（勾稽验证）。
+            ⚠️ **单位是小数**：`0.659` 表示 65.9%，不是百分数。
+            已验证 `total_liab / total_assets == asset_liab_ratio` 完全一致到末位
+
+        # ── 流动资产 ─────────────────────────────────
+        currency_funds:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            货币资金
+        tradable_fnncl_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            交易性金融资产
+        bills_receivable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应收票据
+        account_receivable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应收账款
+        ar_and_br:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应收票据及应收账款（合计项）
+        pre_payment:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            预付款项
+        interest_receivable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应收利息
+        dividend_receivable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应收股利。本样本值为 `3.0E8`（科学计数法，表示 3 亿）
+        othr_receivables:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他应收款
+        inventory:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            存货
+        contractual_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            合同资产
+        to_sale_asset:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            持有待售资产
+        nca_due_within_one_year:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            一年内到期的非流动资产
+        othr_current_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他流动资产
+        current_assets_si:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            流动资产特殊项目（si = special items）
+
+        # ── 非流动资产 ─────────────────────────────────
+        salable_financial_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            可供出售金融资产
+        saleable_finacial_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            可供出售金融资产 —— **上游拼写错误的变体**（`finacial` 缺 n），
+            与 `salable_financial_assets` 并存于同一响应中。
+            ⚠️ **必须原样保留**，"顺手改对"会导致取不到值
+        held_to_maturity_invest:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            持有至到期投资
+        lt_receivable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            长期应收款
+        lt_equity_invest:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            长期股权投资
+        other_eq_ins_invest:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他权益工具投资
+        invest_property:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            投资性房地产
+        fixed_asset:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            固定资产（裸名）。⚠️ 本样本恒为 `null`，有值的是 `fixed_asset_sum`
+        fixed_asset_sum:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            固定资产合计。本样本有值（143.56 亿）
+        construction_in_process:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            在建工程（裸名）。⚠️ 本样本恒为 `null`，有值的是 `construction_in_process_sum`
+        construction_in_process_sum:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            在建工程合计。本样本有值（8.61 亿）
+        project_goods_and_material:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            工程物资
+        fixed_assets_disposal:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            固定资产清理
+        productive_biological_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            生产性生物资产
+        oil_and_gas_asset:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            油气资产
+        intangible_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            无形资产
+        dev_expenditure:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            开发支出
+        goodwill:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            商誉
+        lt_deferred_expense:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            长期待摊费用
+        dt_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            递延所得税资产（dt = deferred tax）
+        other_illiquid_fnncl_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他非流动金融资产
+        othr_noncurrent_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他非流动资产
+        noncurrent_assets_si:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            非流动资产特殊项目
+
+        # ── 流动负债 ─────────────────────────────────
+        st_loan:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            短期借款（st = short term）
+        tradable_fnncl_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            交易性金融负债
+        derivative_fnncl_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            衍生金融负债
+        bill_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付票据
+        accounts_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付账款
+        bp_and_ap:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付票据及应付账款（合计项）。
+            已验证：`bill_payable 415.18 亿 + accounts_payable 211.32 亿 = 626.50 亿` == 本字段
+        pre_receivable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            预收款项
+        contract_liabilities:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            合同负债
+        payroll_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付职工薪酬
+        tax_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应交税费
+        interest_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付利息
+        dividend_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付股利
+        othr_payables:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他应付款
+        to_sale_debt:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            持有待售负债
+        noncurrent_liab_due_in1y:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            一年内到期的非流动负债
+        othr_current_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他流动负债
+        current_liab_si:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            流动负债特殊项目
+
+        # ── 非流动负债 ─────────────────────────────────
+        lt_loan:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            长期借款（lt = long term）
+        bond_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付债券
+        perpetual_bond:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            永续债
+        lt_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            长期应付款（裸名）。⚠️ 本样本为 `null`，有值的是 `lt_payable_sum`
+        lt_payable_sum:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            长期应付款合计。
+            ⚠️ 本样本为 `[0.0, null]` —— 这是**值确实为零**，不是"无数据"
+        special_payable:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            专项应付款
+        estimated_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            预计负债
+        dt_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            递延所得税负债
+        othr_non_current_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他非流动负债
+        noncurrent_liab_si:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            非流动负债特殊项目
+        noncurrent_liab_di:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            非流动负债递延收益（di 含义未确认，置信度低）
+
+        # ── 所有者权益 ─────────────────────────────────
+        shares:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **股本（金额，单位「元」）—— 不是股数！**
+
+            🔴 字段名强烈暗示"股数"，本样本值 `1,741,985,086` 看起来也像"17.42 亿股"，
+            但归母权益构成勾稽证明它是**金额**：
+
+            ```
+            shares 1,741,985,086.00 + capital_reserve 37,030,444,558.60
+              + earned_surplus 595,120,048.80 + undstrbtd_profit 1,777,233,986.07
+              + special_reserve 111,066,918.11 + othr_compre_income 54,326,795.01
+            = 41,310,177,392.59  == total_quity_atsopc ✅（差额仅 7.6e-06 浮点误差）
+            ```
+
+            它作为加数直接参与金额求和 —— 若是股数，量纲不可能对上。
+            数值与股数相同是因为赛力斯股本面值 1 元/股（A 股通例）。
+            **对面值非 1 元的标的两者会不同**，当股数用会静默算错每股指标
+        othr_equity_instruments:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他权益工具
+        capital_reserve:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            资本公积
+        treasury_stock:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            库存股
+        othr_compre_income:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其他综合收益**累计余额**。
+
+            ⚠️ **利润表有同名字段 `othr_compre_income`，但语义是「本期发生额」**。
+            这是两表唯一的同名业务字段（其余交集 `report_date`/`report_name`/`ctime` 均为元数据）。
+            跨表按报告期 join 时此字段会静默冲突
+        special_reserve:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            专项储备
+        earned_surplus:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            盈余公积
+        general_risk_provision:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            一般风险准备
+        undstrbtd_profit:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            未分配利润（undstrbtd = undistributed）
+        frgn_currency_convert_diff:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            外币报表折算差额
+
+    CashFlowPeriod:
+      type: object
+      description: |
+        单个报告期的现金流量表数据。
+
+        **口径为期间累计发生额**（年初至该报告期末），与利润表同类。
+        ⚠️ 但本表累计值**可以下降甚至为负**（经营现金流本身可正可负），
+        不能像利润表那样用「单调递增」判定累计口径。
+
+        共 41 个字段：`report_date` / `report_name` / `ctime` 三个标量 +
+        **38 个 `ValueWithYoY` 二元组**（36 个流量字段 + 2 个时点余额字段）。
+
+        ## 命名规律
+
+        | 缩写 | 含义 |
+        | --- | --- |
+        | `oa` / `ia` / `fa` | operating / investing / financing activities |
+        | `ci` / `cos` | cash inflow / cash outflow |
+        | `ncf` | net cash flow |
+        | `cce` | cash and cash equivalents |
+
+        于是 `sub_total_of_ci_from_oa` = 经营活动现金流入小计。
+
+        字段中文名的说明：表头映射表不在本次抓包的前端资源中，
+        以下中文名依据勾稽关系验算与会计准则推定。
+        标注「勾稽验证」的项已用赛力斯 2026Q1 实数验算通过（README §5.5 列出全部九组等式）。
+      properties:
+        # ── 标量字段 ──────────────────────────────────────────
+        report_date:
+          type: integer
+          format: int64
+          description: |
+            报告期末日期，**毫秒**时间戳，恒为该期最后一日 00:00:00 **东八区**。
+            同时是翻页游标的来源：下一页传 `report_date + 1`。
+          example: 1774886400000
+        report_name:
+          type: string
+          description: |
+            报告期名称。
+
+            ⚠️ **措辞区分口径**：`type=all/Q*` 时为「2026一季**报**」（累计发生额），
+            `type=S*` 时为「2026一季**度**」（单季差分）。
+            唯一的文本差异是「报」vs「度」，极易看漏。
+          example: 2026一季报
+        ctime:
+          type: ['null', integer]
+          format: int64
+          description: |
+            数据入库时间（毫秒）。
+
+            ⚠️ **本端点抓包中恒为 `null`**（与 `balance.json` 一致）；
+            三端点中只有 `income.json` 的同名字段有值。
+          example: null
+
+        # ── 三大活动汇总（全部勾稽验证） ─────────────────────────────
+        sub_total_of_ci_from_oa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            经营活动现金流入小计（勾稽验证）
+        sub_total_of_cos_from_oa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            经营活动现金流出小计（勾稽验证）
+        ncf_from_oa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **经营活动产生的现金流量净额**（勾稽验证）。
+            `sub_total_of_ci_from_oa - sub_total_of_cos_from_oa == ncf_from_oa`
+        sub_total_of_ci_from_ia:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            投资活动现金流入小计（勾稽验证）
+        sub_total_of_cos_from_ia:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            投资活动现金流出小计（勾稽验证）
+        ncf_from_ia:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **投资活动产生的现金流量净额**（勾稽验证）
+        sub_total_of_ci_from_fa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            筹资活动现金流入小计（勾稽验证）
+        sub_total_of_cos_from_fa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            筹资活动现金流出小计（勾稽验证）
+        ncf_from_fa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **筹资活动产生的现金流量净额**（勾稽验证）
+
+        # ── 经营活动明细 ─────────────────────────────
+        cash_received_of_sales_service:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            销售商品、提供劳务收到的现金（勾稽验证）
+        refund_of_tax_and_levies:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            收到的税费返还（勾稽验证）
+        cash_received_of_othr_oa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            收到其他与经营活动有关的现金（勾稽验证）
+        goods_buy_and_service_cash_pay:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            购买商品、接受劳务支付的现金（勾稽验证）
+        cash_paid_to_employee_etc:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            支付给职工以及为职工支付的现金（勾稽验证）
+        payments_of_all_taxes:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            支付的各项税费（勾稽验证）
+        othrcash_paid_relating_to_oa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            支付其他与经营活动有关的现金（勾稽验证）
+
+        # ── 投资活动明细 ─────────────────────────────
+        cash_received_of_dspsl_invest:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            收回投资收到的现金（dspsl = disposal）（勾稽验证）
+        invest_income_cash_received:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            取得投资收益收到的现金（勾稽验证）
+        net_cash_of_disposal_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            处置固定资产、无形资产和其他长期资产收回的现金净额（勾稽验证）
+        net_cash_of_disposal_branch:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            处置子公司及其他营业单位收到的现金净额。本样本为 `null`
+        cash_received_of_othr_ia:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            收到其他与投资活动有关的现金（勾稽验证）
+        cash_paid_for_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            购建固定资产、无形资产和其他长期资产支付的现金（勾稽验证）
+        invest_paid_cash:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            投资支付的现金（勾稽验证）
+        net_cash_amt_from_branch:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            取得子公司及其他营业单位支付的现金净额。本样本为 `null`
+        othrcash_paid_relating_to_ia:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            支付其他与投资活动有关的现金。本样本为 `null`
+
+        # ── 筹资活动明细 ─────────────────────────────
+        cash_received_of_absorb_invest:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            吸收投资收到的现金。本样本为 `null`
+        cash_received_from_investor:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其中：子公司吸收少数股东投资收到的现金。本样本为 `null`
+        cash_received_of_borrowing:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            取得借款收到的现金（勾稽验证）。
+            本样本值为 `6.0E7`（科学计数法，表示 6000 万）
+        cash_received_from_bond_issue:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            发行债券收到的现金。本样本为 `null`
+        cash_received_of_othr_fa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            收到其他与筹资活动有关的现金（勾稽验证）
+        cash_pay_for_debt:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            偿还债务支付的现金（勾稽验证）。
+            本样本值为 `2.1792855E8`（科学计数法）
+        cash_paid_of_distribution:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            分配股利、利润或偿付利息支付的现金（勾稽验证）
+        branch_paid_to_minority_holder:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            其中：子公司支付给少数股东的股利、利润。本样本为 `null`
+        othrcash_paid_relating_to_fa:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            支付其他与筹资活动有关的现金（勾稽验证）
+
+        # ── 现金余额（⚠️ 含 2 个在 S 口径下失真的时点字段） ─────────────────────────────
+        effect_of_exchange_chg_on_cce:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            汇率变动对现金及现金等价物的影响（勾稽验证）。
+            **流量字段**，`S` 口径下正确
+        net_increase_in_cce:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            现金及现金等价物净增加额（勾稽验证）。
+            `ncf_from_oa + ncf_from_ia + ncf_from_fa + effect_of_exchange_chg_on_cce == net_increase_in_cce`
+
+            **流量字段**，`S` 口径下正确
+        initial_balance_of_cce:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            期初现金及现金等价物余额。
+
+            🔴 **这是时点余额字段，`type=S*` 时失真** —— 第 2~4 季恒变成 `0.0`。
+            实现须在 `S` 口径下置 `null` 并标注不可用，详见路径级说明。
+        final_balance_of_cce:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            期末现金及现金等价物余额（勾稽验证）。
+            `initial_balance_of_cce + net_increase_in_cce == final_balance_of_cce`
+
+            🔴 **这是时点余额字段，`type=S*` 时失真** —— 退化成等于当季净增额。
+            危险之处在于失真后**仍是正的、量级合理的数字**，从结果看不出错误。
+            （实测：2025四季度真实期末余额 483.63 亿，`S0` 返回 216.79 亿）
+
+            ⚠️ 另注意本字段与 `balance.json` 的 `currency_funds`（货币资金）**口径不同**：
+            2026Q1 分别为 221.49 亿 / 638.54 亿，差额为受限资金。不可混用。
+
+    IndicatorPeriod:
+      type: object
+      description: |
+        单个报告期的主要财务指标。
+
+        **本 schema 与三张报表性质不同** —— 报表是上游披露的原始科目，
+        本端点是**由报表计算出的衍生指标**（比率、每股值、周转率）。
+
+        共 38 个字段：`report_date` / `report_name` / `ctime` 三个标量 +
+        **35 个 `ValueWithYoY` 二元组**。
+
+        ## 🔴 单位在同一张表内不统一
+
+        报表可以「金额一律元、同比一律小数」一刀切，**本表不行**：
+
+        | 单位 | 字段示例 | 值 |
+        | --- | --- | --- |
+        | **百分数** | `asset_liab_ratio` | `65.9226` = 65.92% |
+        | **小数比率** | `ncf_from_oa_to_total_liab` | `-0.2568` = −25.68% |
+        | **倍/次** | `current_ratio` | `1.0687` 倍 |
+        | **天** | `cash_cycle` | `-130.9449` 天 |
+        | **元** | `total_revenue` | `25745711786.75` |
+        | **元/股** | `np_per_share` | `23.7144` |
+
+        上面前两行**在同一个报告期对象里**，一个百分数一个小数 ——
+        任何统一处理都会让一半字段错 100 倍。
+        每个字段的单位见其 `description` 的「单位」行。
+
+        ## 🔴 与报表的 2 个同名字段口径冲突
+
+        `asset_liab_ratio`（单位差 100 倍）与 `capital_reserve`（语义完全不同）
+        和 `balance.json` 冲突，跨表 join 会静默出错。详见各字段说明。
+
+        ## ⚠️ 三个字段名与实际语义不符
+
+        `np_per_share` = 每股净**资产**（非净利润）、
+        `holder_equity` = 权益**比率**（非金额）、
+        `capital_reserve` = **每股**资本公积（非总额）。
+
+        字段中文名的说明：表头映射表不在本次抓包的前端资源中，
+        以下中文名依据**数值反算**推定。标注「精确命中」的项已用赛力斯 2026Q1
+        实数验算通过（README §6.6 列出全部算式）。
+      properties:
+        # ── 标量字段 ──────────────────────────────────────────
+        report_date:
+          type: integer
+          format: int64
+          description: |
+            报告期末日期，**毫秒**时间戳，恒为该期最后一日 00:00:00 **东八区**。
+            同时是翻页游标的来源：下一页传 `report_date + 1`。
+          example: 1774886400000
+        report_name:
+          type: string
+          description: |
+            报告期名称。
+
+            ⚠️ 本端点 HAR 中**未出现 `S` 系列**，故只见「…季**报**」措辞。
+          example: 2026一季报
+        ctime:
+          type: ['null', integer]
+          format: int64
+          description: |
+            数据入库时间（毫秒）。
+
+            本端点**有值**（如 `1777463147000`），与 `income.json` 一致；
+            `balance.json` / `cash_flow.json` 的同名字段恒为 `null`。
+          example: 1777463147000
+
+        # ── 盈利能力（单位：% ） ────────────────────
+        avg_roe:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            净资产收益率（**平均**口径）
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            归母净利 ÷ **平均**归母权益 × 100 = 1.8350 ≈ 字段值 `1.83`。
+
+            ⚠️ 与 `ore_dlt`（摊薄口径）是一对，数值不同（1.83 vs 1.8263），
+            回写时必须说明口径，不可混用或二选一。
+            （字段仅 2 位精度，无法与期末口径 1.8263 严格区分，
+            但字段名 `avg` 与 `ore_dlt` 的存在共同指向平均口径）
+        ore_dlt:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            净资产收益率（**摊薄**口径，dlt = diluted）
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            归母净利 754,464,672.82 ÷ **期末**归母权益 41,310,177,392.59 × 100
+            = 1.8263 ✅ **精确命中**
+        net_interest_of_total_assets:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            总资产净利率
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            净利润 610,545,316.93 ÷ **平均**总资产 ((143,905,863,420.75+123,747,865,038.34)/2) × 100
+            = 0.45622 ✅ **精确命中**（注意分母是平均总资产，非期末）
+        gross_selling_rate:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            毛利率
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            (营收 25,745,711,786.75 − 营业成本 18,990,470,700.37) ÷ 营收 × 100
+            = 26.2383 ✅ **精确命中**
+        net_selling_rate:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            净利率
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            **净利润**（含少数股东）610,545,316.93 ÷ 营收 × 100 = 2.3714 ✅ **精确命中**
+
+            ⚠️ 分子用的是 `net_profit` 而非 `net_profit_atsopc`。
+            用归母净利算得 2.9304，与字段值不符。
+
+        # ── 每股指标（单位：元/股） ────────────────────
+        basic_eps:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            基本每股收益
+
+            单位：**元/股**
+
+            与 `income.json` 的同名字段**数值完全一致**（0.43），跨表 join 安全。
+        np_per_share:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **每股净资产**
+
+            单位：**元/股**
+
+            🔴 **不是「每股净利润」** —— `np` = net **property**，不是 net profit。
+
+            归母权益 41,310,177,392.59 ÷ 股本 1,741,985,086 = 23.7144 ✅ **精确命中**
+
+            ⚠️ 赛力斯 2026Q1 每股净资产 23.71 元、每股收益（`basic_eps`）0.43 元，
+            相差 55 倍。当成「每股净利润」会得出荒谬的估值结论。
+        undistri_profit_ps:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            每股未分配利润
+
+            单位：**元/股**
+
+            未分配利润 1,777,233,986.07 ÷ 股本 = 1.0202 ✅ **精确命中**
+        operate_cash_flow_ps:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            每股经营现金流
+
+            单位：**元/股**
+
+            经营活动现金流净额 −20,950,295,141.48 ÷ 股本 = −12.0267 ✅ **精确命中**
+        capital_reserve:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **每股**资本公积
+
+            单位：**元/股**
+
+            🔴 **与 `balance.json` 的同名字段语义完全不同**：
+
+            ```
+            balance.capital_reserve  = 37,030,444,558.6   （资本公积总额，元）
+                     ÷ 股本 1,741,985,086
+            = 21.2576  == indicator.capital_reserve  ✅ 精确命中
+            ```
+
+            跨表 join 时若做 `{...balanceRow, ...indicatorRow}` 合并，
+            370 亿的真实值会被 21.2576 静默覆盖且**不报错**。
+            实现须加命名空间前缀或显式排除本字段。
+
+        # ── 偿债能力与资本结构（⚠️ 单位混合：% / 小数 / 倍） ────────────────────
+        asset_liab_ratio:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            资产负债率
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            🔴 **与 `balance.json` 的同名字段单位差 100 倍**：
+
+            | 来源 | 值 |
+            | --- | --- |
+            | `indicator.json` | `65.9226`（百分数，且精度截断至 4 位） |
+            | `balance.json` | `0.659226148333026`（小数，全精度） |
+
+            跨表 join 会静默出错。
+        holder_equity:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            **权益比率**（股东权益占比）
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            🔴 **不是「股东权益金额」** —— balance 里权益是百亿级，这里是 34.0774。
+
+            全部所有者权益 42,170,036,604.68 ÷ 总资产 123,747,865,038.34 × 100
+            = 34.0774 ✅ **精确命中**
+
+            互补验证：`holder_equity 34.0774 + asset_liab_ratio 65.9226 = 100.0000` ✅
+        current_ratio:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            流动比率
+
+            单位：**倍/次**
+
+            流动资产 78,613,668,121.96 ÷ 流动负债 73,560,772,941.76 = 1.0687 ✅ **精确命中**
+        quick_ratio:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            速动比率
+
+            单位：**倍/次**
+
+            ⚠️ **推定，未精确验证**。
+
+            标准公式 (流动资产 − 存货) ÷ 流动负债 = 1.0421，与字段值 `0.91` **不符**。
+            按「货币资金 + 交易性金融资产 + 应收票据及账款 + 预付款项」÷ 流动负债
+            算得 0.9127，接近但因字段仅 2 位精度**无法确证**。
+        equity_ratio:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            产权比率
+
+            单位：**倍/次**
+
+            负债合计 81,577,828,433.66 ÷ **归母**权益 41,310,177,392.59 = 1.9748 ✅ **精确命中**
+
+            ⚠️ 分母是**归母**权益，与 `equity_multiplier`（用全部权益）**口径不同**。
+        equity_multiplier:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            权益乘数
+
+            单位：**倍/次**
+
+            总资产 123,747,865,038.34 ÷ **全部**所有者权益 42,170,036,604.68 = 2.9345 ✅ **精确命中**
+
+            ⚠️ 分母是**全部**权益（含少数股东），与 `equity_ratio`（用归母权益）**口径不同**。
+            做杜邦分解时若假设二者同分母会推错。
+        ncf_from_oa_to_total_liab:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            经营现金流 / 总负债
+
+            单位：**小数比率**（`-0.2568` 表示 −25.68%）
+
+            经营活动现金流净额 −20,950,295,141.48 ÷ 负债合计 81,577,828,433.66
+            = −0.2568 ✅ **精确命中**
+
+            🔴 **本表唯一的小数比率字段** —— 同一行里 `asset_liab_ratio` 是百分数（65.9226），
+            本字段却是小数（−0.2568）。任何统一处理都会错 100 倍。
+
+        # ── 营运效率（单位：次 / 天） ────────────────────
+        inventory_turnover:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            存货周转率
+
+            单位：**倍/次**
+
+            本期营业成本 ÷ 存货。字段值 8.6251
+        inventory_turnover_days:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            存货周转天数
+
+            单位：**天**
+
+            90 ÷ `inventory_turnover` 8.6251 = 10.4347 ✅ **精确命中**
+
+            ⚠️ **基数是报告期实际天数（一季报 90 天），不是 360 天**。
+            年报期的基数未验证，跨期比较周转天数须注意。
+        account_receivable_turnover:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应收账款周转率
+
+            单位：**倍/次**
+
+            字段值 15.9825
+        receivable_turnover_days:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应收账款周转天数
+
+            单位：**天**
+
+            90 ÷ `account_receivable_turnover` 15.9825 = 5.6312 ✅ **精确命中**
+        accounts_payable_turnover:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付账款周转率
+
+            单位：**倍/次**
+
+            字段值 0.6122
+        accounts_payable_turnover_days:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            应付账款周转天数
+
+            单位：**天**
+
+            90 ÷ `accounts_payable_turnover` 0.6122 = 147.0108 ✅ **精确命中**
+        total_capital_turnover:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            总资产周转率
+
+            单位：**倍/次**
+
+            字段值 0.1924
+        current_asset_turnover_rate:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            流动资产周转率
+
+            单位：**倍/次**
+
+            字段值 0.2903
+        fixed_asset_turnover_ratio:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            固定资产周转率
+
+            单位：**倍/次**
+
+            字段值 1.7728
+        operating_cycle:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            营业周期
+
+            单位：**天**
+
+            `inventory_turnover_days` 10.4347 + `receivable_turnover_days` 5.6312
+            = 16.0659 ✅ **精确命中**
+        cash_cycle:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            现金循环周期
+
+            单位：**天**
+
+            `operating_cycle` 16.0659 − `accounts_payable_turnover_days` 147.0108
+            = −130.9449 ✅ **精确命中**
+
+            ⚠️ **为负是正常的**（−131 天），表示占用上游资金，
+            是强势产业链地位的体现，**不是数据错误**。
+
+        # ── 成长能力（单位：% ，⚠️ 与二元组同比重复但差 100 倍） ────────────────────
+        operating_income_yoy:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            营业收入同比增长率
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            🔴 **与同一行 `total_revenue[1]` 是同一个数，但单位差 100 倍**：
+            本字段 `[0]` = 34.4629（百分数），`total_revenue[1]` = 0.3446（小数）。
+
+            🔴 **本字段自己的 `[1]` = 2.2347 是「同比增长率的同比」**（二阶量），
+            意为「营收增速本身比去年同期的增速涨了 2.23 倍」，
+            **极易误读成「营收增长 223%」**。建议投影层丢弃或改名为 `yoyOfYoy`。
+        net_profit_atsopc_yoy:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            归母净利润同比增长率
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            `[0]` = 0.8921（百分数）vs `net_profit_atsopc[1]` = 0.008921（小数），差 100 倍。
+            `[1]` 是增速的同比（二阶量），见 `operating_income_yoy` 说明。
+        np_atsopc_nrgal_yoy:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            归母**扣非**净利润同比增长率
+
+            单位：**百分数**（`65.9226` 表示 65.92%）
+
+            `[0]` = −73.8735（百分数）vs `net_profit_after_nrgal_atsolc[1]` = −0.7387（小数），差 100 倍。
+            `[1]` 是增速的同比（二阶量）。
+
+        # ── 原始金额搬运（单位：元，与 income.json 数值一致） ────────────────────
+        total_revenue:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            营业总收入
+
+            单位：**元**
+
+            与 `income.json` 的同名字段**数值完全一致**（25,745,711,786.75），跨表 join 安全。
+        net_profit_atsopc:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            归属于母公司股东的净利润
+
+            单位：**元**
+
+            与 `income.json` 的同名字段**数值完全一致**（754,464,672.82），跨表 join 安全。
+        net_profit_after_nrgal_atsolc:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            归母扣非净利润
+
+            单位：**元**
+
+            与 `income.json` 的同名字段**数值完全一致**（102,900,401.65），跨表 join 安全。
+
+        # ── 语义未确认 ────────────────────
+        rop:
+          $ref: '#/components/schemas/ValueWithYoY'
+          description: |
+            ⚠️ **语义未确认**
+
+            单位：**未知**
+
+            🔴 **本字段语义未能破解，实现时应原样透传并标注未知，不要编中文名。**
+
+            本样本值 `73.0061`。已排除的口径（均不匹配）：
+
+            | 尝试 | 计算值 |
+            | --- | --- |
+            | 营业成本 / 营收 × 100 | 73.7617 |
+            | 营业成本 / 营业总成本 × 100 | 73.4238 |
+            | 营业总成本 / 营收 × 100 | 100.4602 |
+            | (营收 − 营业利润) / 营收 × 100 | 96.8711 |
+            | 每股营收 | 14.7795 |
+
+            跨期观察：74.10（2025Q1）→ 143.26（中报）→ 157.86（三季报）
+            → 100.64（年报）→ 73.01（2026Q1），呈期内累积后回落形态，不像稳定比率。
+
+            不要凭字段名猜测（`rop` 疑似 return on ...，但所有 return 类口径已排除）。
+
+    # ══════════════════════════════════════════════════════════
+    # B 组 · 股权与公司运作（f10/cn/**）
+    # ══════════════════════════════════════════════════════════
+
+    F10EnvelopeBase:
+      type: object
+      description: |
+        f10 端点族的响应信封外层。
+
+        ⚠️ **与 A 组的 `FinanceEnvelopeBase` 结构完全相同**
+        （`error_code` 类型漂移、`400016` 语义都一致），
+        但 `data` 内部形态各端点不同（有的 `items`、有的 `fund_items`、
+        有的多块并列），故不共用同一个 `data` 基类。
+      required: [data, error_code]
+      properties:
+        error_code:
+          description: |
+            ⚠️ **类型会漂移**：成功时为 number `0`，失败时为 string（如 `"400016"`）。
+            判定须归一化：`Number(error_code) === 0`。
+          oneOf:
+            - type: integer
+            - type: string
+          examples: [0, '400016']
+        error_description:
+          type: string
+          example: ''
+
+    # ── 分红 / 增发 / 配股 ──────────────────────────────────
+    BonusResponse:
+      allOf:
+        - $ref: '#/components/schemas/F10EnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/BonusData'
+
+    BonusData:
+      type: object
+      description: |
+        ⚠️ **一个端点返回三块互不相干的数据** —— 这是「增发」HAR 中
+        没有独立端点的原因。
+
+        ⚠️ **`page`/`size` 只对 `items`（分红）生效**：`addtions` / `allots`
+        在每一页都**原样重复返回**（实测 page=1 与 page=2 的 `addtions`
+        完全相同）。跨页合并时若把它们也 concat，会得到重复数据。
+      properties:
+        items:
+          type: array
+          description: 分红记录（派息/送转），受 page/size 分页
+          items:
+            $ref: '#/components/schemas/BonusItem'
+        addtions:
+          type: array
+          description: |
+            增发记录。⚠️ 上游拼写为 `addtions`（缺 i），原样保留。
+            **不受分页影响，每页重复返回全量。**
+          items:
+            $ref: '#/components/schemas/AdditionItem'
+        allots:
+          type: array
+          description: |
+            配股记录。**本样本为空数组**（宁德时代无配股），
+            字段结构**未验证** —— 实现时按 `unknown[]` 透传，不要臆造字段名。
+          items:
+            type: object
+
+    BonusItem:
+      type: object
+      description: 单条分红记录
+      properties:
+        dividend_year:
+          type: string
+          description: |
+            分红所属期。
+
+            ⚠️ **两种格式并存**：
+            - 报告期格式：`2025年报` / `2026中报`
+            - 日期格式：`2024-12-11`（不与定期报告绑定的**特别分红**）
+
+            按报告期与三张报表 join 时，日期格式的记录会**漏配**。
+            算「某年度分红总额」须把日期格式的记录也归入对应年份。
+          example: 2025年报
+        plan_explain:
+          type: string
+          description: |
+            🔴 **分配方案说明 —— 分红金额的唯一来源**。
+
+            上游**不提供** `dividend_per_share` 一类结构化数值字段，
+            金额只能从这个中文串解析。
+
+            本样本已见的**全部**形态（⚠️ 单一标的样本，不是 A 股全集）：
+
+            | 形态 | 示例 | 含义 |
+            | --- | --- | --- |
+            | 纯派息 | `10派69.57元(实施方案)` | 每 10 股派 69.57 元（税前） |
+            | 转增+派息 | `10转8股派25.2元(实施方案)` | 每 10 股转增 8 股 + 派 25.2 元 |
+
+            **A 股实际还存在但本样本未出现**的形态（实现必须容错）：
+            `10送3股派2元`（送股，税务处理与转增不同）、`10转10股`（纯转增）、
+            `不分配不转增` 等。
+
+            **实现要求**：
+            1. 用宽松正则 + **显式失败** —— 解析不出金额时返回 `null` 并保留
+               原文，**绝不能猜或填 0**（否则「未分红」与「解析失败」混为一谈）；
+            2. 投影层**必须同时保留原文**供消费方核对；
+            3. `(实施方案)` 后缀表示**已实施**。若出现 `(预案)` /
+               `(股东大会通过)` 等状态，含义完全不同（尚未实施），
+               **不能计入已分红金额**。本样本全是「实施方案」，其它状态未验证。
+          example: 10派69.57元(实施方案)
+        equity_date:
+          type: [integer, 'null']
+          format: int64
+          description: 股权登记日（毫秒时间戳）
+          example: 1776700800000
+        ex_dividend_date:
+          type: [integer, 'null']
+          format: int64
+          description: 除权除息日（毫秒）
+          example: 1776787200000
+        ashare_ex_dividend_date:
+          type: [integer, 'null']
+          format: int64
+          description: A 股除权除息日（毫秒）。本样本与 `ex_dividend_date` 相同
+          example: 1776787200000
+        dividend_date:
+          type: [integer, 'null']
+          format: int64
+          description: 派息日（毫秒）
+          example: 1776787200000
+        cancle_dividend_date:
+          type: [integer, 'null']
+          format: int64
+          description: |
+            取消分红日（毫秒）。⚠️ 上游拼写为 `cancle`（应为 cancel），
+            **原样保留**，改对了会取不到值。
+
+            非 `null` 表示该次分红**已被取消**，计算分红总额时须排除。
+          example: null
+
+    AdditionItem:
+      type: object
+      description: |
+        单条增发记录。
+
+        **已验证勾稽**（宁德时代 2022 年定增）：
+        ```
+        109,756,097 股 × 410.0 元/股 = 45,000,000,000 元（毛额）
+        actual_rc_net_amt            = 44,870,113,208 元（净额）
+        差额                          =    129,886,792 元 ← 发行费用
+        ```
+        净额 ≈ 毛额 − 发行费用，符合「净额」定义 ✅
+      properties:
+        actual_issue_vol:
+          type: number
+          description: |
+            实际发行数量（**股**）。
+            ⚠️ 上游值带浮点噪声（`109756097.00000001`），投影时按需取整，
+            但不要四舍五入到万/亿。
+          example: 109756097.00000001
+        actual_issue_price:
+          type: number
+          description: 实际发行价（元/股）
+          example: 410.0
+        actual_rc_net_amt:
+          type: number
+          description: 实际募集资金**净额**（元，已扣发行费用）
+          example: 44870113208
+        listing_ad:
+          type: [integer, 'null']
+          format: int64
+          description: 增发股份上市日（毫秒时间戳）
+          example: 1656518400000
+
+    # ── 十大股东 / 十大流通股东 ──────────────────────────────
+    TopHoldersResponse:
+      allOf:
+        - $ref: '#/components/schemas/F10EnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TopHoldersData'
+
+    TopHoldersData:
+      type: object
+      properties:
+        items:
+          type: array
+          description: 前十大股东（口径由 `circula` 决定）
+          items:
+            $ref: '#/components/schemas/HolderItem'
+        total:
+          $ref: '#/components/schemas/HolderTotal'
+        quit:
+          type: array
+          description: |
+            本期**退出**前十的股东。
+
+            ⚠️ **比 `items[]` 多一个字段 `holder_rank`**（退出前的排名）。
+            投影时**不要与 `items` 合并**成一个数组 —— 二者语义相反
+            （在榜 vs 已退出），字段集也不同。
+          items:
+            $ref: '#/components/schemas/QuitHolderItem'
+        times:
+          type: array
+          description: |
+            全部可用报告期 —— **日期索引的来源**。
+
+            取历史期 = 按 `times[].value` 传 `locate`/`start` 逐个展开请求
+            （用 `@Expanded`，不是 `@Paginated`）。
+
+            ⚠️ `name` **混着报告期与具体日期**（`2026中报` / `2026-08-05`），
+            后者是定期报告之外的临时披露。
+
+            ⚠️ 两种 `circula` 口径的可用期数不同（实测 48 vs 36），
+            不能用一种口径的 `times` 去展开另一种。
+          items:
+            $ref: '#/components/schemas/TimeIndexItem'
+
+    HolderItem:
+      type: object
+      properties:
+        holder_name:
+          type: string
+          description: 股东名称（含席位/产品全称，原样透传）
+          example: 厦门瑞庭投资有限公司
+        held_num:
+          type: number
+          description: 持股数量（**股**）
+          example: 1019704949
+        held_ratio:
+          type: number
+          description: 持股占比（**百分数**，`22.04` = 22.04%）
+          example: 22.04
+        chg:
+          type: number
+          description: |
+            持股**数量**的环比变动（**百分数**）。
+
+            **已验证**（易方达创业板 ETF）：
+            ```
+            本期 28,619,389 / 上期 25,105,056
+            (28,619,389 − 25,105,056) / 25,105,056 = +14.0%  == chg 14.0 ✅
+            ```
+
+            ⚠️ 这是**持股数量**的变动率，**不是持股占比**的变动率
+            （同期占比变动为 +14.81%，与字段值不符）。
+            总股本变化时两者不同向 —— 增发后股东未减持时 `chg=0`
+            但 `held_ratio` 会下降。
+
+            ⚠️ `0.0` 表示**持股未变**，不是「无数据」。
+          example: 0.0
+
+    QuitHolderItem:
+      type: object
+      description: |
+        本期退出前十的股东。
+
+        ⚠️ **字段集与 `items[]` 不同，不是简单的「多一个字段」**
+        （已全量核实 66 条 quit 项）：
+
+        | 字段 | `items[]` | `quit[]` |
+        | --- | --- | --- |
+        | `holder_name` / `held_num` / `held_ratio` | ✅ | ✅ |
+        | `chg`（环比变动） | ✅ | ❌ **没有** |
+        | `holder_rank`（退出前排名） | ❌ | ✅ |
+
+        故本 schema **独立定义**，不用 `allOf` 继承 `HolderItem`
+        —— 继承会凭空多出一个上游并不返回的 `chg`。
+      properties:
+        holder_name:
+          type: string
+          description: 股东名称
+          example: 中国工商银行股份有限公司-华泰柏瑞沪深300交易型开放式指数证券投资基金
+        held_num:
+          type: number
+          description: 退出前持股数量（**股**）
+          example: 43712032
+        held_ratio:
+          type: number
+          description: 退出前持股占比（**百分数**）
+          example: 0.96
+        holder_rank:
+          type: integer
+          description: |
+            **退出前的排名** —— `items[]` 中没有此字段。
+          example: 8
+
+    HolderTotal:
+      type: object
+      description: |
+        十大股东合计。**已验证与 `items[]` 之和精确吻合**：
+        ```
+        items 占比之和 66.28  == held_ratio 66.28           ✅
+        items 持股之和 3,066,053,502 == held_num            ✅
+        ```
+        `held_ratio` 即**股权集中度**，是股权分析的核心指标。
+      properties:
+        held_num:
+          type: number
+          description: 十大股东合计持股数量（股）
+          example: 3066053502
+        held_ratio:
+          type: number
+          description: 十大股东合计持股比例（百分数）
+          example: 66.28
+        chg:
+          type: number
+          description: 合计持股数量的环比变动（百分数）
+          example: -0.11
+
+    TimeIndexItem:
+      type: object
+      description: 可用报告期索引项
+      properties:
+        name:
+          type: string
+          description: 期次显示名（`2026中报` 或 `2026-08-05`）
+          example: 2026中报
+        value:
+          type: integer
+          format: int64
+          description: 期次时间戳（毫秒）—— 作为 `locate` / `timestamp` 入参
+          example: 1782748800000
+
+    # ── 股东人数 ────────────────────────────────────────────
+    HoldersNumResponse:
+      allOf:
+        - $ref: '#/components/schemas/F10EnvelopeBase'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/HoldersNumItem'
+
+    HoldersNumItem:
+      type: object
+      description: |
+        单期股东人数与筹码结构。
+
+        **两组勾稽已验证**：
+        ```
+        ① per_amount = per_float × price
+           16584.555446926857 × 393.01 = 6,517,896.136196724   ✅
+        ② ashare_holder + hshare_holder = holder_num
+           269,979 + 54 = 270,033                              ✅
+        ```
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+          description: 报告期（毫秒）。**跨页去重的业务主键**
+          example: 1782748800000
+        holder_num:
+          type: integer
+          description: 股东总户数
+          example: 270033
+        ashare_holder:
+          type: [integer, 'null']
+          description: A 股股东户数
+          example: 269979
+        hshare_holder:
+          type: [integer, 'null']
+          description: H 股股东户数
+          example: 54
+        bshare_holder:
+          type: [integer, 'null']
+          description: B 股股东户数（无 B 股时为 `null`）
+          example: null
+        chg:
+          type: number
+          description: |
+            股东户数的**环比**变动（**百分数**）。
+
+            **已验证**（四期反算全部吻合）：
+            `(270,033 − 204,504) / 204,504 = +32.04%` == `chg 32.04` ✅
+          example: 32.04
+        per_float:
+          type: number
+          description: 户均持流通股（**股**）
+          example: 16584.555446926857
+        per_float_chg:
+          type: number
+          description: 户均持股的环比变动（百分数）
+          example: -23.14
+        per_amount:
+          type: number
+          description: 户均持股**市值**（元）= `per_float × price`
+          example: 6517896.136196724
+        price:
+          type: number
+          description: |
+            该报告期股价（元）。
+
+            🔴 **不能替代行情源做估值** —— 只在股东人数披露日有值
+            （一年数期），且未说明是收盘价还是均价。
+          example: 393.01
+        top_holder_ratio:
+          type: number
+          description: 前十大股东合计持股比例（百分数）
+          example: 66.53
+        top_float_holder_ratio:
+          type: number
+          description: 前十大**流通**股东合计持股比例（百分数）
+          example: 63.3138
+
+    # ── 基金持股 ────────────────────────────────────────────
+    OrgHoldingResponse:
+      allOf:
+        - $ref: '#/components/schemas/F10EnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/OrgHoldingData'
+
+    OrgHoldingData:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+          description: 当前期时间戳（毫秒）
+          example: 1782748800000
+        chg_date:
+          type: string
+          description: |
+            当前期名称。⚠️ 字段名像日期，**实为报告期名称字符串**。
+          example: 2026中报
+        times:
+          type: array
+          description: |
+            全部可用报告期（本样本 33 期）。
+            取历史期传 `timestamp`（⚠️ 与 `top_holders` 的 `locate` 参数名不同）。
+          items:
+            $ref: '#/components/schemas/TimeIndexItem'
+        fund_items:
+          type: array
+          description: |
+            基金持股明细（本样本 **2160 条**）。
+
+            🔴 **业务数据在 `fund_items` 而非 `items`** —— 与本组其它端点
+            不一致，取值时容易写错键名。
+
+            🔴 **首条是「全部合计」汇总行，不是一只基金**：
+            ```
+            fund_items[0].org_name_or_fund_name = "全部合计"
+            fund_items[1] 起才是个体基金
+            ```
+            **已验证**：合计行 `held_num` 294,063,712 == 2159 条明细之和，
+            差额 **0** ✅
+
+            **实现要求**：投影时必须把首条剥离为独立的汇总字段，
+            不能混在明细数组里 —— 否则「持仓基金数量」多算 1、
+            「最大持仓基金」永远是那条汇总行。
+
+            ⚠️ 已全量扫描确认本样本只有这一条汇总行，
+            但**按名称匹配比按位置判断更稳妥**。
+          items:
+            $ref: '#/components/schemas/FundHoldingItem'
+
+    FundHoldingItem:
+      type: object
+      properties:
+        org_name_or_fund_name:
+          type: string
+          description: 机构或基金名称。⚠️ 值为 `全部合计` 时是汇总行
+          example: 易方达创业板交易型开放式指数证券投资基金
+        held_num:
+          type: number
+          description: 持股数量（**股**）
+          example: 16165525
+        to_float_shares_ratio:
+          type: number
+          description: |
+            占**流通股**比例（**百分数**，`0.3795` = 0.3795%）。
+
+            ⚠️ 分母是流通股，不是总股本、也不是该基金净值。
+          example: 0.3795
+
+    # ── 限售解禁 ────────────────────────────────────────────
+    SharesChgResponse:
+      allOf:
+        - $ref: '#/components/schemas/F10EnvelopeBase'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/RestrictItem'
+
+    RestrictItem:
+      type: object
+      description: |
+        单条限售解禁记录。
+
+        ⚠️ **同一解禁日会有多条记录**（本样本 10 条中有 5 条
+        `floatable_time` 相同，分属不同股东）—— 这是同一批解禁按股东拆分。
+        算「某日解禁总量」必须**按 `floatable_time` 分组求和**，不能取单条。
+      properties:
+        holder_name:
+          type: string
+          description: 股东名称
+          example: 香港上海汇丰银行有限公司
+        floatable_time:
+          type: integer
+          format: int64
+          description: 可流通日（解禁日，毫秒时间戳）
+          example: 1672761600000
+        floatable_shares_num:
+          type: number
+          description: |
+            解禁数量（**股**）。
+            ⚠️ 上游值带浮点噪声（`3419511.9999999995`），投影时按需取整。
+          example: 3419511.9999999995
+        float_shares_type:
+          type: string
+          description: |
+            解禁股份类型。
+
+            本样本**只出现一种**：`定向增发机构配售股份`（10/10 条）。
+
+            A 股实际还有「首发原股东限售股份」「股权激励限售股份」
+            「首发战略配售股份」等，**本样本未覆盖** ——
+            按开放字符串处理，不要做枚举映射。
+          example: 定向增发机构配售股份
+
+    # ── 高管增减持 ──────────────────────────────────────────
+    SkHolderChgResponse:
+      allOf:
+        - $ref: '#/components/schemas/F10EnvelopeBase'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SkHolderChgItem'
+
+    SkHolderChgItem:
+      type: object
+      description: |
+        单条高管（及关联人）持股变动记录。
+
+        **余额链已验证**（按时间倒序，`本期余额 − 本期变动 == 上期余额`）：
+        ```
+        259,212,300 − (−333,300) = 259,545,600  == 上期  ✅
+        259,545,600 − (−304,500) = 259,850,100  == 上期  ✅
+        259,850,100 − (−258,400) = 260,108,500  == 上期  ✅
+        260,108,500 − (−106,200) = 260,214,700  == 上期  ✅
+        260,214,700 − (−281,700) = 260,496,400  == 上期  ✅
+        ```
+        这确认了 `chg_shares_num` 的符号约定与 `daily_shares_balance_otd`
+        的「变动后」语义。
+
+        ⚠️ **6 条中有 1 条差 100 股**（同日多笔交易被合并所致，非字段语义
+        问题）—— 不要把余额链当强校验，只作参考。
+      properties:
+        symbol:
+          type: string
+          example: SZ300750
+        name:
+          type: string
+          description: 标的名称
+          example: 宁德时代
+        share_changer_name:
+          type: string
+          description: 股份变动人（实际买卖的人）
+          example: 黄世霖
+        manage_name:
+          type: string
+          description: 关联高管。变动人若是高管亲属，此处是高管本人
+          example: 黄世霖
+        rr_of_chgr_and_manage:
+          type: string
+          description: 变动人与高管的关系。本样本全为 `本人`
+          example: 本人
+        duty:
+          type: string
+          description: 职务
+          example: 董事、高管
+        chg_date:
+          type: integer
+          format: int64
+          description: 变动日期（毫秒时间戳）
+          example: 1654012800000
+        chg_shares_num:
+          type: number
+          description: |
+            变动股数。🔴 **负数 = 减持，正数 = 增持**。
+          example: -311500
+        trans_avg_price:
+          type: number
+          description: 成交均价（元/股）
+          example: 408.0
+        daily_shares_balance_otd:
+          type: number
+          description: |
+            **变动后**持股余额（股）。otd = of the day。
+          example: 258900700
+
+tags:
+  - name: 财务数据
+    description: 个股财务报表与指标（A 组 · `finance/cn/**`）
+  - name: 股权与公司运作
+    description: |
+      股东结构、分红增发、机构持仓、解禁与高管增减持（B 组 · `f10/cn/**`）。
+
+      填补了原先标记为 🔴 高严重度的「分红」与「股东结构」两项缺口。
+      仍缺股价/市值（估值分析需另接行情源）。

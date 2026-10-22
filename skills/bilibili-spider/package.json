@@ -1,0 +1,27 @@
+{
+  "name": "@spider/bilibili",
+  "version": "2.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "skill": "tsx src/cli.ts",
+    "build": "node ../../scripts/build-skill.js bilibili-spider",
+    "lint": "eslint src/**/*.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "migrate": "tsx src/scripts/migrate-storage.ts"
+  },
+  "dependencies": {
+    "@spider/core": "workspace:*",
+    "puppeteer-core": "^24.37.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.1",
+    "linkedom": "^0.18.13",
+    "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.2.2",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.10"
+  }
+}

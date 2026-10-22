@@ -1,0 +1,5 @@
+# 抓包文件含真实登录凭据（Cookie / token），严禁入库
+*.har
+
+node_modules/
+dist/

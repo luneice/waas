@@ -1,0 +1,42 @@
+{
+  "name": "@spider/rss",
+  "version": "2.0.0",
+  "private": true,
+  "main": "src/cli.ts",
+  "bin": {
+    "rss-skill": "./dist/scripts/index.js"
+  },
+  "scripts": {
+    "skill": "tsx src/cli.ts",
+    "build": "node ../../scripts/build-skill.js rss-spider",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "buildConfig": {
+    "externals": [
+      "rsshub"
+    ]
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.5.0",
+    "@spider/core": "workspace:*",
+    "@spider/sidecar-intel": "workspace:*",
+    "dotenv": "^16.3.1",
+    "fast-xml-parser": "^5.2.0",
+    "jsdom": "^26.0.0",
+    "puppeteer-core": "^24.37.3",
+    "rsshub": "1.0.0-master.d375d79",
+    "turndown": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.1",
+    "@types/turndown": "^5.0.5",
+    "linkedom": "^0.18.13",
+    "tsconfig-paths": "^4.2.0",
+    "tslib": "^2.8.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.2.2",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@spider/sidecar-intel",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "dependencies": {
+    "@spider/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.1",
+    "typescript": "^5.2.2"
+  }
+}
